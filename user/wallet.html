@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#07111f" />
-  <meta name="description" content="Your TaskNOVA dashboard — wallet, tasks, advertisements and more." />
+  <meta name="description" content="Your TaskNOVA wallet — deposit, withdraw, and swap balances." />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Home — TaskNOVA</title>
+  <title>Wallet — TaskNOVA</title>
   <link
   rel="icon"
   type="image/png"
@@ -25,8 +25,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Home page stylesheet -->
-  <link rel="stylesheet" href="../css/user/home.css">
+  <!-- Wallet page stylesheet -->
+  <link rel="stylesheet" href="../css/user/wallet.css">
+
+  <!-- Paystack Inline JS -->
+  <script src="https://js.paystack.co/v1/inline.js"></script>
 </head>
 <body>
 
@@ -174,10 +177,10 @@
   <main>
     <div class="container">
 
-      <!-- Greeting -->
+      <!-- Page heading -->
       <div class="greeting reveal">
-        <h1>Hi, <span id="greetingName">there</span></h1>
-        <p>Here's what's happening with your TaskNOVA account.</p>
+        <h1>Wallet</h1>
+        <p>Deposit, withdraw, or swap between your balances.</p>
       </div>
 
       <!-- Top advertisement (default banner shown when no paid ad is active) -->
@@ -200,72 +203,163 @@
         <a class="btn" href="outstanding.html">Resolve</a>
       </div>
 
-      <!-- ================= WALLET SUMMARY ================= -->
+      <!-- ================= WALLET BALANCES ================= -->
       <section class="wallet-section">
-        <div class="section-label reveal">
-          <h2>Wallet</h2>
-          <a href="wallet.html">View wallet <i class="bx bx-chevron-right"></i></a>
-        </div>
-
         <div class="wallet-cards">
           <div class="wallet-card reveal delay-1">
             <div class="wc-icon"><i class="bx bx-wallet-alt"></i></div>
             <div class="wc-label">Deposit Balance</div>
             <div class="wc-value skeleton" id="depositValue">₦0.00</div>
+            <div class="wc-note">For tasks, ads, airtime &amp; data</div>
           </div>
 
           <div class="wallet-card earned reveal delay-2">
             <div class="wc-icon"><i class="bx bx-trending-up"></i></div>
             <div class="wc-label">Earned Balance</div>
             <div class="wc-value skeleton" id="earnedValue">₦0.00</div>
+            <div class="wc-note">For withdrawal, airtime, data &amp; swap</div>
           </div>
-        </div>
-
-        <div class="wallet-actions reveal delay-3">
-          <a class="wallet-action-btn" href="deposit.html">
-            <i class="bx bx-download"></i> Deposit
-          </a>
-          <a class="wallet-action-btn" href="withdrawal.html">
-            <i class="bx bx-upload"></i> Withdraw
-          </a>
-          <a class="wallet-action-btn" href="wallet.html#swap">
-            <i class="bx bx-transfer-alt"></i> Swap
-          </a>
         </div>
       </section>
 
-      <!-- ================= AIRTIME & DATA — VELTRIX ================= -->
-      <section class="veltrix-section">
-        <div class="veltrix-card reveal">
-          <div class="veltrix-head">
-            <div class="veltrix-title">
-              <div class="vt-icon"><i class="bx bx-signal-5"></i></div>
-              <div>
-                <strong>Airtime &amp; Data</strong>
-                <span>Pay from your Deposit or Earned wallet</span>
+      <!-- ================= DEPOSIT / WITHDRAW / SWAP ================= -->
+      <section class="wallet-actions-section">
+        <div class="wallet-tabs" id="walletTabs" data-active="deposit">
+          <span class="wallet-tab-glider"></span>
+          <button type="button" class="wallet-tab active" data-target="deposit">Deposit</button>
+          <button type="button" class="wallet-tab" data-target="withdraw">Withdraw</button>
+          <button type="button" class="wallet-tab" data-target="swap">Swap</button>
+        </div>
+
+        <div class="wallet-viewport" id="walletViewport" data-active="deposit">
+          <div class="wallet-slider" id="walletSlider">
+
+            <!-- ============ DEPOSIT PANEL ============ -->
+            <form class="wallet-panel" id="depositForm" novalidate>
+              <p class="panel-intro">Deposit funds through Paystack. Successful payments are verified before your wallet is credited.</p>
+
+              <div class="panel-msg" id="depositMsg"></div>
+
+              <div class="amount-field">
+                <label for="depositAmount">Amount</label>
+                <div class="amount-input-wrap">
+                  <span class="currency-prefix">₦</span>
+                  <input type="number" id="depositAmount" name="depositAmount" min="100" step="1" placeholder="0.00" inputmode="numeric" required>
+                </div>
+                <div class="amount-chips" id="depositChips">
+                  <button type="button" class="amount-chip" data-amount="500">₦500</button>
+                  <button type="button" class="amount-chip" data-amount="1000">₦1,000</button>
+                  <button type="button" class="amount-chip" data-amount="2000">₦2,000</button>
+                  <button type="button" class="amount-chip" data-amount="5000">₦5,000</button>
+                  <button type="button" class="amount-chip" data-amount="10000">₦10,000</button>
+                </div>
+                <span class="field-note" id="depositOutstandingNote"></span>
               </div>
-            </div>
+
+              <button type="submit" class="btn btn-primary" id="depositSubmit">
+                <span class="btn-spinner"></span>
+                <span class="btn-label">Pay with Paystack</span>
+                <i class="bx bx-lock-alt"></i>
+              </button>
+
+              <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Secured by <b>Paystack</b></p>
+            </form>
+
+            <!-- ============ WITHDRAW PANEL ============ -->
+            <form class="wallet-panel" id="withdrawForm" novalidate>
+              <p class="panel-intro">Withdrawals are paid from your <strong>Earned Balance</strong> only. Minimum ₦1,000 · 20% withdrawal fee.</p>
+
+              <div class="panel-msg" id="withdrawMsg"></div>
+
+              <div class="amount-field">
+                <label for="withdrawAmount">Amount</label>
+                <div class="amount-input-wrap">
+                  <span class="currency-prefix">₦</span>
+                  <input type="number" id="withdrawAmount" name="withdrawAmount" min="1000" step="1" placeholder="0.00" inputmode="numeric" required>
+                </div>
+              </div>
+
+              <div class="fee-breakdown">
+                <div class="fee-row"><span>Withdrawal fee (20%)</span><span id="withdrawFeeValue">₦0.00</span></div>
+                <div class="fee-row total"><span>You'll receive</span><span id="withdrawReceiveValue">₦0.00</span></div>
+              </div>
+
+              <div class="w-field">
+                <label for="bankSelect">Bank</label>
+                <select id="bankSelect" name="bankSelect" required>
+                  <option value="" disabled selected>Select your bank</option>
+                </select>
+              </div>
+
+              <div class="w-field">
+                <label for="accountNumber">Account number</label>
+                <div class="account-input-wrap">
+                  <input type="text" id="accountNumber" name="accountNumber" placeholder="10-digit account number" inputmode="numeric" maxlength="10" autocomplete="off" required>
+                  <i class="bx bx-loader-alt account-status-icon" id="accountStatusIcon"></i>
+                </div>
+              </div>
+
+              <div class="resolved-name-box" id="resolvedNameBox">
+                <i class="bx bx-badge-check"></i>
+                <div>
+                  <div class="rn-label">Account name</div>
+                  <div class="rn-value" id="resolvedNameValue">—</div>
+                </div>
+              </div>
+
+              <input type="hidden" id="bankCode" name="bankCode">
+
+              <button type="submit" class="btn btn-primary" id="withdrawSubmit" disabled>
+                <span class="btn-spinner"></span>
+                <span class="btn-label">Request Withdrawal</span>
+                <i class="bx bx-upload"></i>
+              </button>
+
+              <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Disbursed via <b>Paystack</b></p>
+            </form>
+
+            <!-- ============ SWAP PANEL ============ -->
+            <form class="wallet-panel" id="swapForm" novalidate>
+              <p class="panel-intro">Move money from your Earned Balance into your Deposit Balance. If you have an outstanding balance, it's cleared first.</p>
+
+              <div class="panel-msg" id="swapMsg"></div>
+
+              <div class="amount-field">
+                <label for="swapAmount">Amount to swap</label>
+                <div class="amount-input-wrap">
+                  <span class="currency-prefix">₦</span>
+                  <input type="number" id="swapAmount" name="swapAmount" min="1" step="1" placeholder="0.00" inputmode="numeric" required>
+                </div>
+                <span class="field-note" id="swapAvailableNote">Available: ₦0.00</span>
+              </div>
+
+              <div class="swap-preview" id="swapPreview" style="display:none;">
+                <div class="sp-box outstanding">
+                  <div class="sp-label">Clears outstanding</div>
+                  <div class="sp-value" id="swapOutstandingValue">₦0.00</div>
+                </div>
+                <i class="bx bx-right-arrow-alt sp-arrow"></i>
+                <div class="sp-box deposit">
+                  <div class="sp-label">To deposit</div>
+                  <div class="sp-value" id="swapDepositValue">₦0.00</div>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary" id="swapSubmit">
+                <span class="btn-spinner"></span>
+                <span class="btn-label">Swap to Deposit</span>
+                <i class="bx bx-transfer-alt"></i>
+              </button>
+            </form>
+
           </div>
-
-          <p class="vt-desc">
-            Buy airtime and data instantly. This service is powered by Veltrix and billed
-            through your TaskNOVA wallet.
-          </p>
-
-          <div class="veltrix-actions">
-            <button class="btn-veltrix" data-veltrix-open type="button">
-              <i class="bx bx-mobile-alt"></i> Buy Airtime / Data
-            </button>
-          </div>
-
-          <p class="vt-source-note">Purchases are processed by Veltrix.</p>
         </div>
       </section>
 
-      <!-- ================= RECENT TRANSACTIONS ================= -->
-      <section class="transactions-section">
+      <!-- ================= RECENT WALLET ACTIVITY ================= -->
+      <section class="activity-section">
         <div class="section-label reveal">
-          <h2>Recent transactions</h2>
+          <h2>Recent wallet activity</h2>
           <a href="transactions.html">View all <i class="bx bx-chevron-right"></i></a>
         </div>
 
@@ -310,7 +404,7 @@
        BOTTOM NAVIGATION (mobile)
        ========================================================= -->
   <nav class="bottom-nav">
-    <a class="bn-item active" href="home.html">
+    <a class="bn-item" href="home.html">
       <i class="bx bxs-home"></i> Home
     </a>
     <a class="bn-item post-item" href="post.html">
@@ -328,16 +422,7 @@
     </a>
   </nav>
 
-  <!-- =========================================================
-       VELTRIX WIDGET (embedded exactly as provided by Veltrix)
-       ========================================================= -->
-  <script
-    src="https://veltrix.com.ng/widget/veltrix.js"
-    data-partner="536ba438-bfc9-4af7-9ef6-bf0103691ab8"
-    async>
-  </script>
-
-  <!-- Home page logic (Firebase auth guard, wallet, theme, menu, drag) -->
-  <script type="module" src="../js/user/home.js"></script>
+  <!-- Wallet page logic (Firebase auth guard, live balances, Paystack deposit/withdraw, swap) -->
+  <script type="module" src="../js/user/wallet.js"></script>
 </body>
 </html>
