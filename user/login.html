@@ -733,6 +733,16 @@
 .lock-wrap.locked .field-toggle { visibility: hidden; }
 .lock-wrap.locked .field-input-wrap input { opacity: .55; cursor: not-allowed; }
 
+.lock-indicator.show { display: block; }
+
+.field-input-wrap input[readonly] {
+  opacity: .6;
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
+
+#referralCode { padding-right: 40px; }
+
 .lock-overlay {
   position: absolute;
   inset: 0;
@@ -1211,7 +1221,13 @@
 
                 <div class="field">
                   <label for="referralCode">Referral code <span style="font-weight:400;">(optional)</span></label>
-                  <input type="text" id="referralCode" name="referralCode" placeholder="Enter a referral code if you have one">
+                  <div class="field-input-wrap">
+                    <input type="text" id="referralCode" name="referralCode" placeholder="Enter a referral code if you have one">
+                    <i class="bx bx-lock-alt lock-indicator" id="referralLockIcon" aria-hidden="true"></i>
+                  </div>
+                  <span class="field-hint" id="referralAutoNote" style="display:none;">
+                    <i class="bx bx-check-circle" style="color:var(--success);"></i> Applied automatically from your referral link.
+                  </span>
                 </div>
 
                 <p class="terms-note">
@@ -1436,6 +1452,32 @@
     const institutionWrap = document.getElementById("institutionWrap");
     institutionWrap.addEventListener("transitionend", syncHeight);
     setTimeout(syncHeight, 60);
+
+    /* ---------------------------------------------------------
+       REFERRAL CODE — auto-fill from ?ref=USERNAME in the URL
+       If present, lock the field (readonly) so it can't be
+       overwritten by mistake. If absent, the field behaves
+       exactly as before — optional, freely editable.
+       --------------------------------------------------------- */
+    const referralCodeInput = document.getElementById("referralCode");
+    const referralLockIcon = document.getElementById("referralLockIcon");
+    const referralAutoNote = document.getElementById("referralAutoNote");
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const refFromUrl = urlParams.get("ref");
+
+    if (refFromUrl) {
+      referralCodeInput.value = refFromUrl.trim();
+      referralCodeInput.setAttribute("readonly", "readonly");
+      referralLockIcon.classList.add("show");
+      referralAutoNote.style.display = "flex";
+      referralAutoNote.style.alignItems = "center";
+      referralAutoNote.style.gap = "5px";
+
+      // Someone arriving via a referral link is here to sign up — take them
+      // straight to the signup tab instead of leaving them on login.
+      goTo("signup");
+    }
 
 
 /* ---------------------------------------------------------
