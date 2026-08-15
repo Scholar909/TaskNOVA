@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="Your TaskNOVA dashboard — wallet, tasks, advertisements and more." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Home — TaskNOVA</title>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Home page stylesheet -->
+  <link rel="stylesheet" href="../css/user/home.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="home.html" aria-label="TaskNOVA home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+        </a>
+
+        <div class="nav-actions">
+          <a class="icon-btn" href="alerts.html" aria-label="Alerts">
+            <i class="bx bx-bell"></i>
+            <span class="alert-dot" id="alertDot"></span>
+          </a>
+
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">T</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">&nbsp;</span>
+        </div>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-group-label">Account</div>
+        <nav>
+          <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
+          <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
+          <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
+        </nav>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-group-label">Earn</div>
+        <nav>
+          <a href="earn.html"><i class="bx bx-task"></i> Earn / Tasks</a>
+          <a href="track-work.html"><i class="bx bx-check-double"></i> Track Work Done</a>
+          <a href="request-task.html"><i class="bx bx-message-square-add"></i> Request Task</a>
+        </nav>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-group-label">Advertise</div>
+        <nav>
+          <a href="post-task.html"><i class="bx bx-plus-circle"></i> Post Task</a>
+          <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
+          <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
+          <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
+          <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+        </nav>
+      </div>
+
+      <div class="menu-group">
+        <div class="menu-group-label">Support</div>
+        <nav>
+          <a href="alerts.html"><i class="bx bx-bell"></i> Alerts</a>
+          <a href="support.html"><i class="bx bx-support"></i> Support</a>
+          <a href="help.html"><i class="bx bx-help-circle"></i> Help</a>
+        </nav>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <a class="menu-remove-ads" href="remove-ads.html">
+        <i class="bx bx-shield-x"></i>
+        Remove Ad Pop-ups
+        <span class="active-tag" id="removeAdsStatus" style="display:none;">Active</span>
+      </a>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Greeting -->
+      <div class="greeting reveal">
+        <h1>Hi, <span id="greetingName">there</span></h1>
+        <p>Here's what's happening with your TaskNOVA account.</p>
+      </div>
+
+      <!-- Top advertisement (default banner shown when no paid ad is active) -->
+      <div class="ad-banner reveal delay-1" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+      <!-- Outstanding balance warning (hidden unless outstanding > 0) -->
+      <div class="outstanding-banner" id="outstandingBanner">
+        <i class="bx bx-error-circle"></i>
+        <div class="msg">
+          <strong>Outstanding balance</strong>
+          <span id="outstandingText">You have an outstanding balance on your account.</span>
+        </div>
+        <a class="btn" href="outstanding.html">Resolve</a>
+      </div>
+
+      <!-- ================= WALLET SUMMARY ================= -->
+      <section class="wallet-section">
+        <div class="section-label reveal">
+          <h2>Wallet</h2>
+          <a href="wallet.html">View wallet <i class="bx bx-chevron-right"></i></a>
+        </div>
+
+        <div class="wallet-cards">
+          <div class="wallet-card reveal delay-1">
+            <div class="wc-icon"><i class="bx bx-wallet-alt"></i></div>
+            <div class="wc-label">Deposit Balance</div>
+            <div class="wc-value skeleton" id="depositValue">₦0.00</div>
+          </div>
+
+          <div class="wallet-card earned reveal delay-2">
+            <div class="wc-icon"><i class="bx bx-trending-up"></i></div>
+            <div class="wc-label">Earned Balance</div>
+            <div class="wc-value skeleton" id="earnedValue">₦0.00</div>
+          </div>
+        </div>
+
+        <div class="wallet-actions reveal delay-3">
+          <a class="wallet-action-btn" href="deposit.html">
+            <i class="bx bx-download"></i> Deposit
+          </a>
+          <a class="wallet-action-btn" href="withdrawal.html">
+            <i class="bx bx-upload"></i> Withdraw
+          </a>
+          <a class="wallet-action-btn" href="wallet.html#swap">
+            <i class="bx bx-transfer-alt"></i> Swap
+          </a>
+        </div>
+      </section>
+
+      <!-- ================= AIRTIME & DATA — VELTRIX ================= -->
+      <section class="veltrix-section">
+        <div class="veltrix-card reveal">
+          <div class="veltrix-head">
+            <div class="veltrix-title">
+              <div class="vt-icon"><i class="bx bx-signal-5"></i></div>
+              <div>
+                <strong>Airtime &amp; Data</strong>
+                <span>Pay from your Deposit or Earned wallet</span>
+              </div>
+            </div>
+            <span class="hosted-tag"><i class="bx bx-bolt"></i> Hosted by Veltrix</span>
+          </div>
+
+          <p class="vt-desc">
+            Buy airtime and data instantly. This service is powered by Veltrix and billed
+            through your TaskNOVA wallet.
+          </p>
+
+          <div class="veltrix-actions">
+            <button class="btn-veltrix" data-veltrix-open type="button">
+              <i class="bx bx-mobile-alt"></i> Buy Data
+            </button>
+          </div>
+
+          <p class="vt-source-note">Purchases are processed by Veltrix.</p>
+        </div>
+      </section>
+
+      <!-- ================= QUICK ACTIONS ================= -->
+      <section class="quick-section">
+        <div class="section-label reveal">
+          <h2>Quick actions</h2>
+        </div>
+
+        <div class="quick-grid">
+          <a class="quick-item reveal delay-1" href="earn.html">
+            <div class="qi-icon"><i class="bx bx-task"></i></div>
+            <span>Earn Tasks</span>
+          </a>
+          <a class="quick-item reveal delay-1" href="post-task.html">
+            <div class="qi-icon"><i class="bx bx-plus-circle"></i></div>
+            <span>Post Task</span>
+          </a>
+          <a class="quick-item reveal delay-2" href="advertisements.html">
+            <div class="qi-icon"><i class="bx bx-grid-alt"></i></div>
+            <span>Advertisements</span>
+          </a>
+          <a class="quick-item reveal delay-2" href="transactions.html">
+            <div class="qi-icon"><i class="bx bx-receipt"></i></div>
+            <span>Transactions</span>
+          </a>
+        </div>
+      </section>
+
+      <!-- Bottom advertisement -->
+      <div class="ad-banner bottom-banner reveal" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Floating advertisement (draggable) -->
+  <div class="floating-ad" id="floatingAd" data-default-ad>
+    <span class="fa-close" id="floatingAdClose"><i class="bx bx-x"></i></span>
+    <div class="fa-body">
+      <i class="bx bx-megaphone"></i>
+      Advertise Here
+    </div>
+  </div>
+
+  <!-- Floating support (draggable, sits beneath the floating ad by default) -->
+  <a class="support-fab" id="supportFab"
+     href="https://invite.skred.mobi/3vKxWxzcRy62KdTbhD2VFg.VHGNJ3Z2ik7CZ8OWWE6Ndr_Tr2gZy0w3LTlaXdQueVg"
+     aria-label="TaskNOVA Support"
+     title="TaskNOVA Support">
+    <img src="../assets/images/icon_logo.png" alt="">
+  </a>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item active" href="home.html">
+      <i class="bx bxs-home"></i> Home
+    </a>
+    <a class="bn-item post-item" href="post.html">
+      <span class="bn-post-circle"><i class="bx bx-plus"></i></span>
+      Post
+    </a>
+    <a class="bn-item" href="earn.html">
+      <i class="bx bx-task"></i> Earn
+    </a>
+    <a class="bn-item" href="advertisements.html">
+      <i class="bx bx-grid-alt"></i> Ads
+    </a>
+    <a class="bn-item" href="transactions.html">
+      <i class="bx bx-receipt"></i> Trans.
+    </a>
+  </nav>
+
+  <!-- =========================================================
+       VELTRIX WIDGET (embedded exactly as provided by Veltrix)
+       ========================================================= -->
+  <script
+    src="https://veltrix.com.ng/widget/veltrix.js"
+    data-partner="536ba438-bfc9-4af7-9ef6-bf0103691ab8"
+    async>
+  </script>
+
+  <!-- Home page logic (Firebase auth guard, wallet, theme, menu, drag) -->
+  <script type="module" src="../js/user/home.js"></script>
+</body>
+</html>

@@ -534,6 +534,83 @@
 
     .field-hint.error { color: var(--danger); }
 
+    /* =========================================================
+   USERNAME AVAILABILITY CHECK
+   ========================================================= */
+
+.username-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.username-input-wrap input {
+  width: 100%;
+  padding-right: 42px;
+}
+
+/* Icon container */
+.username-check {
+  position: absolute;
+  right: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  width: 20px;
+  height: 20px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  pointer-events: none;
+
+  font-size: 20px;
+  line-height: 1;
+
+  opacity: 0;
+  visibility: hidden;
+
+  transition:
+    opacity .18s ease,
+    transform .18s ease,
+    color .18s ease;
+}
+
+/* Make the icon appear smoothly */
+.username-check.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Green tick */
+.username-check.available {
+  color: var(--success);
+  transform: translateY(-50%) scale(1);
+}
+
+/* Red cross */
+.username-check.taken,
+.username-check.invalid {
+  color: var(--danger);
+  transform: translateY(-50%) scale(1);
+}
+
+/* Checking state */
+.username-check.checking {
+  color: var(--text-soft);
+  transform: translateY(-50%) scale(.9);
+}
+
+/* Subtle input-border feedback */
+.username-input-wrap input.username-available {
+  border-color: var(--success);
+}
+
+.username-input-wrap input.username-taken,
+.username-input-wrap input.username-invalid {
+  border-color: var(--danger);
+}
+
     .conditional-field {
       display: grid;
       grid-template-rows: 0fr;
@@ -855,7 +932,25 @@
                 <div class="row-2">
                   <div class="field">
                     <label for="username">Username</label>
-                    <input type="text" id="username" name="username" placeholder="amakaj" autocomplete="username" pattern="[a-zA-Z0-9_\.]{3,20}" required>
+                  
+                    <div class="username-input-wrap">
+                      <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        placeholder="amakaj"
+                        autocomplete="username"
+                        pattern="[a-zA-Z0-9_\.]{3,20}"
+                        maxlength="20"
+                        required
+                      >
+                  
+                      <span
+                        class="username-check"
+                        id="usernameCheck"
+                        aria-hidden="true"
+                      ></span>
+                    </div>
                   </div>
 
                   <div class="field">
@@ -1133,6 +1228,258 @@
     const institutionWrap = document.getElementById("institutionWrap");
     institutionWrap.addEventListener("transitionend", syncHeight);
     setTimeout(syncHeight, 60);
+
+
+/* ---------------------------------------------------------
+   REALTIME USERNAME AVAILABILITY CHECK
+   --------------------------------------------------------- */
+
+const usernameInput = document.getElementById("username");
+const usernameCheck = document.getElementById("usernameCheck");
+
+let usernameCheckTimer = null;
+let usernameRequestNumber = 0;
+
+
+/*
+ * Change the username icon.
+ *
+ * type:
+ * ""          = hidden
+ * checking    = checking
+ * available   = green tick
+ * taken       = red cross
+ * invalid     = red cross
+ */
+function updateUsernameCheck(type) {
+
+  // Reset everything
+  usernameCheck.className = "username-check";
+
+  usernameInput.classList.remove(
+    "username-available",
+    "username-taken",
+    "username-invalid"
+  );
+
+  // Nothing to show
+  if (!type) {
+    usernameCheck.innerHTML = "";
+    return;
+  }
+
+  usernameCheck.classList.add("show", type);
+
+
+  /* CHECKING */
+
+  if (type === "checking") {
+    usernameCheck.innerHTML =
+      '<i class="bx bx-loader-alt bx-spin"></i>';
+
+    return;
+  }
+
+
+  /* AVAILABLE */
+
+  if (type === "available") {
+    usernameCheck.innerHTML =
+      '<i class="bx bx-check-circle"></i>';
+
+    usernameInput.classList.add("username-available");
+
+    return;
+  }
+
+
+  /* TAKEN */
+
+  if (type === "taken") {
+    usernameCheck.innerHTML =
+      '<i class="bx bx-x-circle"></i>';
+
+    usernameInput.classList.add("username-taken");
+
+    return;
+  }
+
+
+  /* INVALID */
+
+  if (type === "invalid") {
+    usernameCheck.innerHTML =
+      '<i class="bx bx-x-circle"></i>';
+
+    usernameInput.classList.add("username-invalid");
+
+    return;
+  }
+}
+
+
+/*
+ * Check username against Firestore.
+ */
+async function checkUsernameRealtime() {
+
+  const username = usernameInput.value.trim();
+
+
+  // Empty
+  if (!username) {
+    updateUsernameCheck("");
+    return;
+  }
+
+
+  /*
+   * Username format:
+   * 3–20 characters
+   * letters
+   * numbers
+   * underscore
+   * period
+   */
+  const validFormat = /^[a-zA-Z0-9_.]{3,20}$/;
+
+
+  if (!validFormat.test(username)) {
+
+    updateUsernameCheck("invalid");
+
+    return;
+  }
+
+
+  // Show checking icon
+  updateUsernameCheck("checking");
+
+
+  /*
+   * Give every request a number.
+   *
+   * This prevents an older Firebase response
+   * from replacing a newer result.
+   */
+  const currentRequest = ++usernameRequestNumber;
+
+
+  try {
+
+    const taken = await usernameTaken(username);
+
+
+    // Ignore old request
+    if (currentRequest !== usernameRequestNumber) {
+      return;
+    }
+
+
+    if (taken) {
+
+      updateUsernameCheck("taken");
+
+    } else {
+
+      updateUsernameCheck("available");
+
+    }
+
+
+  } catch (error) {
+
+    console.error(
+      "Username availability check failed:",
+      error
+    );
+
+    /*
+     * If Firebase temporarily fails,
+     * don't show a false green tick.
+     */
+    updateUsernameCheck("");
+
+  }
+}
+
+
+/*
+ * Listen while the user types.
+ */
+usernameInput.addEventListener("input", () => {
+
+  clearTimeout(usernameCheckTimer);
+
+
+  /*
+   * Remove the previous result immediately.
+   *
+   * This prevents:
+   * ✓ Available
+   *
+   * from remaining visible while the user
+   * changes the username.
+   */
+  updateUsernameCheck("");
+
+
+  const username = usernameInput.value.trim();
+
+
+  if (!username) {
+    return;
+  }
+
+
+  /*
+   * If the username is obviously invalid,
+   * don't query Firestore.
+   */
+  const validFormat = /^[a-zA-Z0-9_.]{3,20}$/;
+
+
+  if (!validFormat.test(username)) {
+
+    /*
+     * Small delay so the interface doesn't
+     * flash too aggressively while typing.
+     */
+    usernameCheckTimer = setTimeout(() => {
+
+      updateUsernameCheck("invalid");
+
+    }, 250);
+
+    return;
+  }
+
+
+  /*
+   * Wait 450ms after the user stops typing
+   * before checking Firestore.
+   */
+  usernameCheckTimer = setTimeout(() => {
+
+    checkUsernameRealtime();
+
+  }, 450);
+
+});
+
+
+/*
+ * Also check when the user leaves the field.
+ */
+usernameInput.addEventListener("blur", () => {
+
+  clearTimeout(usernameCheckTimer);
+
+  if (usernameInput.value.trim()) {
+    checkUsernameRealtime();
+  }
+
+});
 
     /* ---------------------------------------------------------
        PASSWORD SHOW/HIDE
