@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#07111f" />
-  <meta name="description" content="Your TaskNOVA dashboard — wallet, tasks, advertisements and more." />
+  <meta name="description" content="Your TaskNOVA profile — the details you signed up with." />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Home — TaskNOVA</title>
+  <title>Profile — TaskNOVA</title>
   <link
   rel="icon"
   type="image/png"
@@ -25,8 +25,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Home page stylesheet -->
-  <link rel="stylesheet" href="../css/user/home.css">
+  <!-- Profile page stylesheet -->
+  <link rel="stylesheet" href="../css/user/profile.css">
 </head>
 <body>
 
@@ -174,10 +174,10 @@
   <main>
     <div class="container">
 
-      <!-- Greeting -->
+      <!-- Page heading -->
       <div class="greeting reveal">
-        <h1>Hi, <span id="greetingName">there</span></h1>
-        <p>Here's what's happening with your TaskNOVA account.</p>
+        <h1>Profile</h1>
+        <p>The details you signed up with — none of this can be edited here.</p>
       </div>
 
       <!-- Top advertisement (default banner shown when no paid ad is active) -->
@@ -190,90 +190,72 @@
         <span class="ad-tag">Ad</span>
       </div>
 
-      <!-- Outstanding balance warning (hidden unless outstanding > 0) -->
-      <div class="outstanding-banner" id="outstandingBanner">
-        <i class="bx bx-error-circle"></i>
-        <div class="msg">
-          <strong>Outstanding balance</strong>
-          <span id="outstandingText">You have an outstanding balance on your account.</span>
-        </div>
-        <a class="btn" href="outstanding.html">Resolve</a>
-      </div>
+      <!-- ================= PROFILE ================= -->
+      <section class="profile-section">
 
-      <!-- ================= WALLET SUMMARY ================= -->
-      <section class="wallet-section">
-        <div class="section-label reveal">
-          <h2>Wallet</h2>
-          <a href="wallet.html">View wallet <i class="bx bx-chevron-right"></i></a>
-        </div>
-
-        <div class="wallet-cards">
-          <div class="wallet-card reveal delay-1">
-            <div class="wc-icon"><i class="bx bx-wallet-alt"></i></div>
-            <div class="wc-label">Deposit Balance</div>
-            <div class="wc-value skeleton" id="depositValue">₦0.00</div>
-          </div>
-
-          <div class="wallet-card earned reveal delay-2">
-            <div class="wc-icon"><i class="bx bx-trending-up"></i></div>
-            <div class="wc-label">Earned Balance</div>
-            <div class="wc-value skeleton" id="earnedValue">₦0.00</div>
+        <!-- Avatar + name + username + account age -->
+        <div class="profile-hero reveal">
+          <div class="profile-avatar" id="profileAvatar">T</div>
+          <div class="profile-hero-info">
+            <h1 class="skeleton-text" id="profileFullName">Loading…</h1>
+            <span class="username-tag" id="profileUsername"><i class="bx bx-at"></i> username</span>
+            <span class="account-age" id="profileAccountAge">Account created —</span>
           </div>
         </div>
 
-        <div class="wallet-actions reveal delay-3">
-          <a class="wallet-action-btn" href="deposit.html">
-            <i class="bx bx-download"></i> Deposit
-          </a>
-          <a class="wallet-action-btn" href="withdrawal.html">
-            <i class="bx bx-upload"></i> Withdraw
-          </a>
-          <a class="wallet-action-btn" href="wallet.html#swap">
-            <i class="bx bx-transfer-alt"></i> Swap
-          </a>
-        </div>
-      </section>
-
-      <!-- ================= AIRTIME & DATA — VELTRIX ================= -->
-      <section class="veltrix-section">
-        <div class="veltrix-card reveal">
-          <div class="veltrix-head">
-            <div class="veltrix-title">
-              <div class="vt-icon"><i class="bx bx-signal-5"></i></div>
-              <div>
-                <strong>Airtime &amp; Data</strong>
-                <span>Pay from your Deposit or Earned wallet</span>
-              </div>
+        <!-- Signup details -->
+        <div class="info-list">
+          <div class="info-row reveal delay-1">
+            <div class="ir-icon"><i class="bx bx-envelope"></i></div>
+            <div class="ir-body">
+              <div class="ir-label">Email</div>
+              <div class="ir-value skeleton" id="infoEmail">—</div>
             </div>
           </div>
 
-          <p class="vt-desc">
-            Buy airtime and data instantly. This service is powered by Veltrix and billed
-            through your TaskNOVA wallet.
-          </p>
-
-          <div class="veltrix-actions">
-            <button class="btn-veltrix" data-veltrix-open type="button">
-              <i class="bx bx-mobile-alt"></i> Buy Airtime / Data
-            </button>
+          <div class="info-row reveal delay-1">
+            <div class="ir-icon"><i class="bx bx-id-card"></i></div>
+            <div class="ir-body">
+              <div class="ir-label">Account type</div>
+              <div class="ir-value skeleton" id="infoAccountType">—</div>
+            </div>
           </div>
 
-          <p class="vt-source-note">Purchases are processed by Veltrix.</p>
-        </div>
-      </section>
+          <div class="info-row reveal delay-2" id="infoInstitutionRow" style="display:none;">
+            <div class="ir-icon"><i class="bx bx-buildings"></i></div>
+            <div class="ir-body">
+              <div class="ir-label">Institution / Location</div>
+              <div class="ir-value" id="infoInstitution">—</div>
+            </div>
+            <span class="ir-badge" id="infoInstitutionAbbr">—</span>
+          </div>
 
-      <!-- ================= RECENT TRANSACTIONS ================= -->
-      <section class="transactions-section">
-        <div class="section-label reveal">
-          <h2>Recent transactions</h2>
-          <a href="transactions.html">View all <i class="bx bx-chevron-right"></i></a>
+          <div class="info-row reveal delay-2">
+            <div class="ir-icon"><i class="bx bx-calendar-check"></i></div>
+            <div class="ir-body">
+              <div class="ir-label">Member since</div>
+              <div class="ir-value skeleton" id="infoMemberSince">—</div>
+            </div>
+          </div>
         </div>
 
-        <div class="tx-list reveal delay-1" id="txList">
-          <div class="tx-skeleton"></div>
-          <div class="tx-skeleton"></div>
-          <div class="tx-skeleton"></div>
+        <!-- Task declines -->
+        <div class="declines-card reveal delay-3">
+          <div class="declines-head">
+            <strong>Task Declines</strong>
+            <span class="declines-count" id="declinesCount">
+              <span class="num">0</span>/50
+            </span>
+          </div>
+          <div class="declines-track">
+            <div class="declines-fill" id="declinesFill"></div>
+          </div>
+          <p class="declines-note" id="declinesNote">
+            Getting your tasks declined too often can lock your account. At 50 declines your account is
+            locked until the unlock fee is paid.
+          </p>
         </div>
+
       </section>
 
       <!-- Bottom advertisement -->
@@ -310,7 +292,7 @@
        BOTTOM NAVIGATION (mobile)
        ========================================================= -->
   <nav class="bottom-nav">
-    <a class="bn-item active" href="home.html">
+    <a class="bn-item" href="home.html">
       <i class="bx bxs-home"></i> Home
     </a>
     <a class="bn-item post-item" href="post.html">
@@ -328,16 +310,7 @@
     </a>
   </nav>
 
-  <!-- =========================================================
-       VELTRIX WIDGET (embedded exactly as provided by Veltrix)
-       ========================================================= -->
-  <script
-    src="https://veltrix.com.ng/widget/veltrix.js"
-    data-partner="536ba438-bfc9-4af7-9ef6-bf0103691ab8"
-    async>
-  </script>
-
-  <!-- Home page logic (Firebase auth guard, wallet, theme, menu, drag) -->
-  <script type="module" src="../js/user/home.js"></script>
+  <!-- Profile page logic (Firebase auth guard, live profile data, theme, menu, drag) -->
+  <script type="module" src="../js/user/profile.js"></script>
 </body>
 </html>
