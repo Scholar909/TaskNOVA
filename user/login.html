@@ -620,6 +620,165 @@
   border-color: var(--danger);
 }
 
+/* =========================================================
+   INSTITUTION NAME -> ABBREVIATION SLIDER
+   ========================================================= */
+
+.inst-viewport {
+  position: relative;
+  overflow: hidden;
+  transition: height .4s var(--ease);
+}
+
+.inst-slider {
+  display: flex;
+  width: 200%;
+  transition: transform .5s var(--ease);
+  align-items: flex-start;
+}
+
+.inst-viewport.slide-2 .inst-slider {
+  transform: translateX(-50%);
+}
+
+.inst-slide {
+  width: 50%;
+  flex-shrink: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.inst-slide-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.inst-next-btn,
+.inst-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--primary);
+  font-weight: 600;
+  font-size: .78rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.inst-next-btn:hover,
+.inst-back-btn:hover { text-decoration: underline; }
+
+.inst-next-btn i { font-size: 1rem; }
+.inst-back-btn { margin-bottom: 2px; }
+.inst-back-btn i { font-size: 1rem; }
+
+/* Abbreviation field + confirm tick button */
+.field-input-wrap.has-confirm input { padding-right: 46px; }
+
+.field-confirm-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px; height: 36px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: color .2s ease, background .2s ease, transform .2s ease;
+}
+
+.field-confirm-btn:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.field-confirm-btn.confirmed {
+  color: #fff;
+  background: var(--success);
+}
+
+.field-confirm-btn.confirmed:hover { background: var(--success); }
+
+.field-hint.confirmed-hint { color: var(--success); }
+
+/* =========================================================
+   PASSWORD LOCK (until institution abbreviation is confirmed)
+   ========================================================= */
+
+.lock-wrap { position: relative; }
+
+.lock-indicator {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-soft);
+  font-size: 1.05rem;
+  display: none;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.lock-wrap.locked .lock-indicator { display: block; }
+.lock-wrap.locked .field-toggle { visibility: hidden; }
+.lock-wrap.locked .field-input-wrap input { opacity: .55; cursor: not-allowed; }
+
+.lock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: not-allowed;
+  display: none;
+}
+
+.lock-wrap.locked .lock-overlay { display: block; }
+
+.lock-tooltip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  padding: 10px 13px;
+  border-radius: 12px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: .72rem;
+  line-height: 1.5;
+  box-shadow: var(--shadow-soft);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+}
+
+.lock-tooltip.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.lock-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 22px;
+  border: 6px solid transparent;
+  border-top-color: var(--text);
+}
+
     .conditional-field {
       display: grid;
       grid-template-rows: 0fr;
@@ -981,9 +1140,39 @@
                 <div class="conditional-field" id="institutionWrap">
                   <div>
                     <div class="field">
-                      <label for="institution">Institution / Location</label>
-                      <input type="text" id="institution" name="institution" placeholder="e.g. University of Abuja">
-                      <span class="field-hint">This will be standardized automatically for filtering.</span>
+                      <label>Institution / Location</label>
+                      <div class="inst-viewport" id="instViewport">
+                        <div class="inst-slider" id="instSlider">
+
+                          <!-- SLIDE 1 — institution name -->
+                          <div class="inst-slide">
+                            <div class="field-input-wrap">
+                              <input type="text" id="institution" name="institution" placeholder="e.g. University of Abuja">
+                            </div>
+                            <div class="inst-slide-actions">
+                              <span class="field-hint">This will be standardized automatically for filtering.</span>
+                              <button type="button" class="inst-next-btn" id="instNextBtn">
+                                Next <i class="bx bx-chevron-right"></i>
+                              </button>
+                            </div>
+                          </div>
+
+                          <!-- SLIDE 2 — abbreviation -->
+                          <div class="inst-slide">
+                            <button type="button" class="inst-back-btn" id="instBackBtn">
+                              <i class="bx bx-chevron-left"></i> Edit institution name
+                            </button>
+                            <div class="field-input-wrap has-confirm">
+                              <input type="text" id="institutionAbbr" name="institutionAbbr" placeholder="Abbreviation" maxlength="12" autocomplete="off">
+                              <button type="button" class="field-confirm-btn" id="instConfirmBtn" aria-label="Confirm abbreviation">
+                                <i class="bx bx-check"></i>
+                              </button>
+                            </div>
+                            <span class="field-hint" id="instAbbrHint">Auto-generated from the institution name — edit if you like, then tap the tick to confirm.</span>
+                          </div>
+
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -991,21 +1180,31 @@
                 <div class="row-2">
                   <div class="field">
                     <label for="signupPassword">Password</label>
-                    <div class="field-input-wrap has-toggle">
-                      <input type="password" id="signupPassword" name="password" placeholder="Min. 6 characters" autocomplete="new-password" required minlength="6">
-                      <button type="button" class="field-toggle" data-toggle-for="signupPassword" aria-label="Show password">
-                        <i class="bx bx-hide"></i>
-                      </button>
+                    <div class="lock-wrap" id="signupPasswordLockWrap">
+                      <div class="field-input-wrap has-toggle">
+                        <input type="password" id="signupPassword" name="password" placeholder="Min. 6 characters" autocomplete="new-password" required minlength="6" readonly tabindex="-1">
+                        <button type="button" class="field-toggle" data-toggle-for="signupPassword" aria-label="Show password">
+                          <i class="bx bx-hide"></i>
+                        </button>
+                        <i class="bx bx-lock-alt lock-indicator" aria-hidden="true"></i>
+                      </div>
+                      <button type="button" class="lock-overlay" aria-hidden="true" tabindex="-1"></button>
+                      <div class="lock-tooltip" id="signupPasswordTooltip">Confirm your institution abbreviation and tap the tick button to unlock this field.</div>
                     </div>
                   </div>
 
                   <div class="field">
                     <label for="confirmPassword">Confirm password</label>
-                    <div class="field-input-wrap has-toggle">
-                      <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Repeat password" autocomplete="new-password" required minlength="6">
-                      <button type="button" class="field-toggle" data-toggle-for="confirmPassword" aria-label="Show password">
-                        <i class="bx bx-hide"></i>
-                      </button>
+                    <div class="lock-wrap" id="confirmPasswordLockWrap">
+                      <div class="field-input-wrap has-toggle">
+                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Repeat password" autocomplete="new-password" required minlength="6" readonly tabindex="-1">
+                        <button type="button" class="field-toggle" data-toggle-for="confirmPassword" aria-label="Show password">
+                          <i class="bx bx-hide"></i>
+                        </button>
+                        <i class="bx bx-lock-alt lock-indicator" aria-hidden="true"></i>
+                      </div>
+                      <button type="button" class="lock-overlay" aria-hidden="true" tabindex="-1"></button>
+                      <div class="lock-tooltip" id="confirmPasswordTooltip">Confirm your institution abbreviation and tap the tick button to unlock this field.</div>
                     </div>
                   </div>
                 </div>
@@ -1506,14 +1705,138 @@ usernameInput.addEventListener("blur", () => {
        ACCOUNT TYPE -> INSTITUTION FIELD
        --------------------------------------------------------- */
     const institutionInput = document.getElementById("institution");
+    const instViewport = document.getElementById("instViewport");
+    const instSlider = document.getElementById("instSlider");
+    const instNextBtn = document.getElementById("instNextBtn");
+    const instBackBtn = document.getElementById("instBackBtn");
+    const institutionAbbrInput = document.getElementById("institutionAbbr");
+    const instConfirmBtn = document.getElementById("instConfirmBtn");
+    const instAbbrHint = document.getElementById("instAbbrHint");
+    const instAbbrHintDefault = instAbbrHint.textContent;
+
+    const lockWraps = [
+      document.getElementById("signupPasswordLockWrap"),
+      document.getElementById("confirmPasswordLockWrap")
+    ];
+
+    let abbrManuallyEdited = false;
+    let abbrConfirmed = false;
+
+    function generateAbbreviation(name) {
+      return name
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase())
+        .join("");
+    }
+
+    function goToInstSlide(slide) {
+      instViewport.classList.toggle("slide-2", slide === 2);
+      syncHeight();
+    }
+
+    function setPasswordLocked(locked) {
+      lockWraps.forEach((wrap) => {
+        wrap.classList.toggle("locked", locked);
+        const input = wrap.querySelector("input");
+        if (locked) {
+          input.setAttribute("readonly", "readonly");
+          input.setAttribute("tabindex", "-1");
+        } else {
+          input.removeAttribute("readonly");
+          input.removeAttribute("tabindex");
+        }
+      });
+    }
+
+    function setAbbrConfirmed(confirmed) {
+      abbrConfirmed = confirmed;
+      instConfirmBtn.classList.toggle("confirmed", confirmed);
+      instConfirmBtn.innerHTML = confirmed
+        ? '<i class="bx bx-check-double"></i>'
+        : '<i class="bx bx-check"></i>';
+      instAbbrHint.textContent = confirmed
+        ? "Abbreviation confirmed ✓ — you can now set your password."
+        : instAbbrHintDefault;
+      instAbbrHint.classList.toggle("confirmed-hint", confirmed);
+
+      const needsInstitution = institutionSelectEl.value === "Student" || institutionSelectEl.value === "Teacher";
+      setPasswordLocked(needsInstitution && !confirmed);
+    }
+
+    // Move to the abbreviation slide
+    instNextBtn.addEventListener("click", () => {
+      const name = institutionInput.value.trim();
+      if (!name) {
+        institutionInput.focus();
+        return;
+      }
+      if (!abbrManuallyEdited || !institutionAbbrInput.value.trim()) {
+        institutionAbbrInput.value = generateAbbreviation(name);
+      }
+      goToInstSlide(2);
+    });
+
+    // Go back to edit the institution name
+    instBackBtn.addEventListener("click", () => {
+      goToInstSlide(1);
+    });
+
+    // Keep the abbreviation in sync with the name, unless the user edited it manually
+    institutionInput.addEventListener("input", () => {
+      if (!abbrManuallyEdited) {
+        institutionAbbrInput.value = generateAbbreviation(institutionInput.value);
+      }
+      if (abbrConfirmed) setAbbrConfirmed(false);
+    });
+
+    institutionAbbrInput.addEventListener("input", () => {
+      abbrManuallyEdited = true;
+      if (abbrConfirmed) setAbbrConfirmed(false);
+    });
+
+    instConfirmBtn.addEventListener("click", () => {
+      if (abbrConfirmed) return; // already confirmed — edit the field to change it
+      if (!institutionAbbrInput.value.trim()) {
+        institutionAbbrInput.focus();
+        return;
+      }
+      setAbbrConfirmed(true);
+    });
+
+    // Tapping a locked password field shows a floating instruction bubble
+    lockWraps.forEach((wrap) => {
+      const overlay = wrap.querySelector(".lock-overlay");
+      const tooltip = wrap.querySelector(".lock-tooltip");
+      let hideTimer = null;
+
+      overlay.addEventListener("click", () => {
+        clearTimeout(hideTimer);
+        tooltip.classList.add("show");
+        hideTimer = setTimeout(() => tooltip.classList.remove("show"), 2800);
+      });
+    });
 
     institutionSelectEl.addEventListener("change", () => {
       const needsInstitution = institutionSelectEl.value === "Student" || institutionSelectEl.value === "Teacher";
       institutionWrap.classList.toggle("open", needsInstitution);
       institutionInput.required = needsInstitution;
-      if (!needsInstitution) institutionInput.value = "";
+
+      if (!needsInstitution) {
+        institutionInput.value = "";
+        institutionAbbrInput.value = "";
+        abbrManuallyEdited = false;
+        goToInstSlide(1);
+        setAbbrConfirmed(false);
+        setPasswordLocked(false);
+      } else {
+        setPasswordLocked(!abbrConfirmed);
+      }
       syncHeight();
     });
+
+    instViewport.addEventListener("transitionend", syncHeight);
 
     /* ---------------------------------------------------------
        LOGIN SUBMIT
@@ -1587,6 +1910,7 @@ usernameInput.addEventListener("blur", () => {
       const email = document.getElementById("signupEmail").value.trim();
       const accountType = institutionSelectEl.value;
       const institution = institutionInput.value.trim();
+      const institutionAbbr = institutionAbbrInput.value.trim().toUpperCase();
       const password = document.getElementById("signupPassword").value;
       const confirmPassword = document.getElementById("confirmPassword").value;
       const referralCode = document.getElementById("referralCode").value.trim();
@@ -1601,8 +1925,23 @@ usernameInput.addEventListener("blur", () => {
         return;
       }
 
-      if ((accountType === "Student" || accountType === "Teacher") && !institution) {
+      const needsInstitution = accountType === "Student" || accountType === "Teacher";
+
+      if (needsInstitution && !institution) {
         showMsg(signupMsg, "error", "Please enter your institution/location.");
+        goToInstSlide(1);
+        return;
+      }
+
+      if (needsInstitution && !institutionAbbr) {
+        showMsg(signupMsg, "error", "Please add an abbreviation for your institution.");
+        goToInstSlide(2);
+        return;
+      }
+
+      if (needsInstitution && !abbrConfirmed) {
+        showMsg(signupMsg, "error", "Please confirm your institution abbreviation using the tick button.");
+        goToInstSlide(2);
         return;
       }
 
@@ -1639,7 +1978,8 @@ usernameInput.addEventListener("blur", () => {
           usernameLower: username.toLowerCase(),
           email,
           accountType,
-          institution: (accountType === "Student" || accountType === "Teacher") ? institution : "",
+          institution: needsInstitution ? institution : "",
+          institutionAbbr: needsInstitution ? institutionAbbr : "",
           referralCodeUsed: referralCode || null,
           wallet: { deposit: 0, earned: 0 },
           outstanding: 0,
@@ -1658,6 +1998,10 @@ usernameInput.addEventListener("blur", () => {
         showMsg(signupMsg, "success", "Account created! We've sent a verification link to " + email + ". Verify it, then log in.");
         signupForm.reset();
         institutionWrap.classList.remove("open");
+        abbrManuallyEdited = false;
+        goToInstSlide(1);
+        setAbbrConfirmed(false);
+        setPasswordLocked(false);
         setTimeout(() => { goTo("login"); }, 1600);
       } catch (err) {
         showMsg(signupMsg, "error", friendlyError(err));
