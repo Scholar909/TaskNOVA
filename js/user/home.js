@@ -372,7 +372,7 @@ onAuthStateChanged(auth, (user) => {
     const firstName = (data.fullName || "there").split(" ")[0];
     if (greetingName) greetingName.textContent = firstName;
     if (userNameEl) userNameEl.textContent = data.fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institution ? " · " + data.institution : "") : user.email;
+    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
     if (userAvatarEl) userAvatarEl.textContent = (data.fullName || "T").trim().charAt(0).toUpperCase();
 
     const deposit = data.wallet?.deposit ?? 0;
