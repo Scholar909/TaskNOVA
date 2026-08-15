@@ -381,7 +381,7 @@ onAuthStateChanged(auth, (user) => {
       declinesCount.classList.add("warn");
       declinesNote.textContent = "You're close to the decline limit. At 50 declines your account is locked until the unlock fee is paid.";
     } else {
-      declinesNote.textContent = "Declining tasks too often can lock your account. At 50 declines your account is locked until the unlock fee is paid.";
+      declinesNote.textContent = "Getting your tasks declined too often can lock your account. At 50 declines your account is locked until the unlock fee is paid.";
     }
   }, (err) => {
     console.error("Profile listener error:", err);
