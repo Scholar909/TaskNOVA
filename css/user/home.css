@@ -441,6 +441,7 @@ img { display: block; max-width: 100%; }
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  margin-top: 12px;
   padding: 5px 10px;
   border-radius: 999px;
   background: var(--veltrix-soft);
