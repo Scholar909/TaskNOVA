@@ -12,7 +12,11 @@ import {
 import {
   getFirestore,
   doc,
-  onSnapshot
+  onSnapshot,
+  collection,
+  query,
+  orderBy,
+  limit
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -39,6 +43,66 @@ const nairaFormat = new Intl.NumberFormat("en-NG", {
 
 function formatNaira(amount) {
   return nairaFormat.format(Number(amount) || 0);
+}
+
+/* ---------------------------------------------------------
+   RELATIVE TIME (for transaction rows)
+   --------------------------------------------------------- */
+function formatRelativeTime(date) {
+  if (!date) return "";
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return date.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+}
+
+/* ---------------------------------------------------------
+   TRANSACTION ICON PER TYPE
+   --------------------------------------------------------- */
+const TX_ICONS = {
+  deposit: "bx-download",
+  withdrawal: "bx-upload",
+  earning: "bx-trending-up",
+  task_payment: "bx-briefcase",
+  airtime: "bx-mobile-alt",
+  data: "bx-wifi",
+  swap: "bx-transfer-alt",
+  referral: "bx-user-plus",
+  refund: "bx-undo",
+  default: "bx-receipt"
+};
+
+function renderTransactions(rows) {
+  const txList = document.getElementById("txList");
+  if (!txList) return;
+
+  if (!rows.length) {
+    txList.innerHTML = `<div class="tx-empty">No transactions yet. Your activity will show up here.</div>`;
+    return;
+  }
+
+  txList.innerHTML = rows.map((tx) => {
+    const kind = tx.direction === "credit" ? "credit" : tx.direction === "pending" ? "pending" : "debit";
+    const icon = TX_ICONS[tx.type] || TX_ICONS.default;
+    const sign = kind === "credit" ? "+" : kind === "pending" ? "" : "−";
+    const when = formatRelativeTime(tx.date);
+
+    return `
+      <div class="tx-row ${kind}">
+        <div class="tx-icon"><i class="bx ${icon}"></i></div>
+        <div class="tx-info">
+          <strong>${tx.title}</strong>
+          <span>${when}${tx.status ? " · " + tx.status : ""}</span>
+        </div>
+        <div class="tx-amount">${sign}${formatNaira(tx.amount)}</div>
+      </div>`;
+  }).join("");
 }
 
 /* ---------------------------------------------------------
@@ -132,6 +196,22 @@ menuBackdrop?.addEventListener("click", closeMenu);
 menuClose?.addEventListener("click", closeMenu);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
 mobileMenu?.querySelectorAll("a").forEach((link) => link.addEventListener("click", closeMenu));
+
+/* ---------------------------------------------------------
+   MENU GROUP ACCORDION (Account / Earn / Advertise / Support)
+   Only one group is open at a time; tapping an open group's
+   label closes it again.
+   --------------------------------------------------------- */
+const menuGroups = document.querySelectorAll(".menu-group");
+
+menuGroups.forEach((group) => {
+  const label = group.querySelector(".menu-group-label");
+  label?.addEventListener("click", () => {
+    const isOpen = group.classList.contains("open");
+    menuGroups.forEach((g) => g.classList.remove("open"));
+    if (!isOpen) group.classList.add("open");
+  });
+});
 
 /* ---------------------------------------------------------
    LOGOUT
@@ -269,6 +349,7 @@ const removeAdsStatus = document.getElementById("removeAdsStatus");
 const greetingName = document.getElementById("greetingName");
 
 let unsubscribeUserDoc = null;
+let unsubscribeTx = null;
 
 onAuthStateChanged(auth, (user) => {
   if (!user) {
@@ -282,6 +363,7 @@ onAuthStateChanged(auth, (user) => {
   }
 
   if (unsubscribeUserDoc) unsubscribeUserDoc();
+  if (unsubscribeTx) unsubscribeTx();
 
   unsubscribeUserDoc = onSnapshot(doc(db, "users", user.uid), (snap) => {
     if (!snap.exists()) return;
@@ -318,6 +400,33 @@ onAuthStateChanged(auth, (user) => {
     }
   }, (err) => {
     console.error("Wallet listener error:", err);
+  });
+
+  // Recent transactions — reads users/{uid}/transactions, newest 10 first.
+  // Each doc is expected to have: type, direction ('credit'|'debit'|'pending'),
+  // amount, title, status (optional), createdAt (Firestore Timestamp).
+  const txQuery = query(
+    collection(db, "users", user.uid, "transactions"),
+    orderBy("createdAt", "desc"),
+    limit(10)
+  );
+
+  unsubscribeTx = onSnapshot(txQuery, (snap) => {
+    const rows = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        title: data.title || data.type || "Transaction",
+        type: data.type || "default",
+        direction: data.direction || "debit",
+        amount: data.amount || 0,
+        status: data.status || "",
+        date: data.createdAt?.toDate ? data.createdAt.toDate() : null
+      };
+    });
+    renderTransactions(rows);
+  }, (err) => {
+    console.error("Transactions listener error:", err);
+    renderTransactions([]);
   });
 
   // NOTE: Wire this up to a real "alerts" subcollection query (where read == false)
