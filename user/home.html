@@ -82,42 +82,66 @@
         </div>
       </div>
 
-      <div class="menu-group">
-        <div class="menu-group-label">Account</div>
-        <nav>
-          <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
-          <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
-          <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
-        </nav>
+      <div class="menu-group" id="menuGroupAccount">
+        <button type="button" class="menu-group-label">
+          Account <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
+              <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
+              <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
+            </nav>
+          </div>
+        </div>
       </div>
 
-      <div class="menu-group">
-        <div class="menu-group-label">Earn</div>
-        <nav>
-          <a href="earn.html"><i class="bx bx-task"></i> Earn / Tasks</a>
-          <a href="track-work.html"><i class="bx bx-check-double"></i> Track Work Done</a>
-          <a href="request-task.html"><i class="bx bx-message-square-add"></i> Request Task</a>
-        </nav>
+      <div class="menu-group" id="menuGroupEarn">
+        <button type="button" class="menu-group-label">
+          Earn <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="earn.html"><i class="bx bx-task"></i> Earn / Tasks</a>
+              <a href="track-work.html"><i class="bx bx-check-double"></i> Track Work Done</a>
+              <a href="request-task.html"><i class="bx bx-message-square-add"></i> Request Task</a>
+            </nav>
+          </div>
+        </div>
       </div>
 
-      <div class="menu-group">
-        <div class="menu-group-label">Advertise</div>
-        <nav>
-          <a href="post-task.html"><i class="bx bx-plus-circle"></i> Post Task</a>
-          <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
-          <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
-          <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
-          <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
-        </nav>
+      <div class="menu-group" id="menuGroupAdvertise">
+        <button type="button" class="menu-group-label">
+          Advertise <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="post-task.html"><i class="bx bx-plus-circle"></i> Post Task</a>
+              <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
+              <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
+              <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
       </div>
 
-      <div class="menu-group">
-        <div class="menu-group-label">Support</div>
-        <nav>
-          <a href="alerts.html"><i class="bx bx-bell"></i> Alerts</a>
-          <a href="support.html"><i class="bx bx-support"></i> Support</a>
-          <a href="help.html"><i class="bx bx-help-circle"></i> Help</a>
-        </nav>
+      <div class="menu-group" id="menuGroupSupport">
+        <button type="button" class="menu-group-label">
+          Support <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="alerts.html"><i class="bx bx-bell"></i> Alerts</a>
+              <a href="support.html"><i class="bx bx-support"></i> Support</a>
+              <a href="help.html"><i class="bx bx-help-circle"></i> Help</a>
+            </nav>
+          </div>
+        </div>
       </div>
 
       <div class="menu-divider"></div>
@@ -229,7 +253,7 @@
 
           <div class="veltrix-actions">
             <button class="btn-veltrix" data-veltrix-open type="button">
-              <i class="bx bx-mobile-alt"></i> Buy Now
+              <i class="bx bx-mobile-alt"></i> Buy Airtime / Data
             </button>
           </div>
 
@@ -237,29 +261,17 @@
         </div>
       </section>
 
-      <!-- ================= QUICK ACTIONS ================= -->
-      <section class="quick-section">
+      <!-- ================= RECENT TRANSACTIONS ================= -->
+      <section class="transactions-section">
         <div class="section-label reveal">
-          <h2>Quick actions</h2>
+          <h2>Recent transactions</h2>
+          <a href="transactions.html">View all <i class="bx bx-chevron-right"></i></a>
         </div>
 
-        <div class="quick-grid">
-          <a class="quick-item reveal delay-1" href="earn.html">
-            <div class="qi-icon"><i class="bx bx-task"></i></div>
-            <span>Earn Tasks</span>
-          </a>
-          <a class="quick-item reveal delay-1" href="post-task.html">
-            <div class="qi-icon"><i class="bx bx-plus-circle"></i></div>
-            <span>Post Task</span>
-          </a>
-          <a class="quick-item reveal delay-2" href="advertisements.html">
-            <div class="qi-icon"><i class="bx bx-grid-alt"></i></div>
-            <span>Advertisements</span>
-          </a>
-          <a class="quick-item reveal delay-2" href="transactions.html">
-            <div class="qi-icon"><i class="bx bx-receipt"></i></div>
-            <span>Transactions</span>
-          </a>
+        <div class="tx-list reveal delay-1" id="txList">
+          <div class="tx-skeleton"></div>
+          <div class="tx-skeleton"></div>
+          <div class="tx-skeleton"></div>
         </div>
       </section>
 
