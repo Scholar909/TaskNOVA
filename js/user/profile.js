@@ -153,7 +153,7 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
    (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
    with the Admin's advertising-specific Skred link if it differs from support.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "https://invite.skred.mobi/3vKxWxzcRy62KdTbhD2VFg.VHGNJ3Z2ik7CZ8OWWE6Ndr_Tr2gZy0w3LTlaXdQueVg";
+const SKRED_ADVERTISE_LINK = "https://invite.skred.mobi/Qs_nAiZ9TrqV9u2D0qYdfw.scQy7QXmaD_0bgLmTFh0f-y7Ihtw1tbXpftAcT-G-pc";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
@@ -251,6 +251,14 @@ if (supportFab) {
   const supportDefaultTop = window.innerHeight - 160;
   const supportDefaultLeft = window.innerWidth - 96;
   makeDraggable(supportFab, "tasknova-float-support-pos", { left: supportDefaultLeft, top: supportDefaultTop });
+
+  supportFab.addEventListener("click", (e) => {
+    e.preventDefault();
+
+    if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
+      Tawk_API.toggle();
+    }
+  });
 }
 
 document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
