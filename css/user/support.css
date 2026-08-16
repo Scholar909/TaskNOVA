@@ -341,7 +341,7 @@ img { display: block; max-width: 100%; }
 }
 
 .csb-text { flex: 1; min-width: 0; }
-.csb-text strong { display: block; font-size: .9rem; }
+.csb-text strong { display: block; font-size: .9rem; color: #fff; }
 .csb-text span { display: block; margin-top: 2px; font-size: .76rem; color: var(--text-soft); }
 
 .chat-support-btn > i { flex-shrink: 0; color: var(--text-soft); font-size: 1.2rem; }
