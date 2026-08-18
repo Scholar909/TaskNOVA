@@ -156,12 +156,6 @@
 
       <div class="menu-divider"></div>
 
-      <a class="menu-remove-ads" href="remove-ads.html">
-        <i class="bx bx-shield-x"></i>
-        Remove Ad Pop-ups
-        <span class="active-tag" id="removeAdsStatus" style="display:none;">Active</span>
-      </a>
-
       <div class="menu-theme-row">
         <span>Dark theme</span>
         <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
@@ -413,10 +407,7 @@
     <a class="bn-item" href="home.html">
       <i class="bx bxs-home"></i> Home
     </a>
-    <a class="bn-item post-item" href="post.html">
-      <span class="bn-post-circle"><i class="bx bx-plus"></i></span>
-      Post
-    </a>
+    <a class="bn-item post-item" href="#" id="postModalTrigger" aria-label="Create a post" aria-haspopup="dialog" aria-controls="tnPostModal">   <span class="bn-post-circle"><i class="bx bx-plus"></i></span>   Post </a>
     <a class="bn-item" href="earn.html">
       <i class="bx bx-task"></i> Earn
     </a>
@@ -443,5 +434,45 @@ s0.parentNode.insertBefore(s1,s0);
 })();
 </script>
 <!-- End of Tawk.to Script -->
+  <script>
+(function(){
+  "use strict";
+
+  const trigger=document.getElementById("postModalTrigger");
+  if(!trigger)return;
+
+  trigger.addEventListener("click",async function(e){
+    e.preventDefault();
+
+    if(!document.getElementById("tnPostModal")){
+      try{
+        const response=await fetch("components/post-modal.html",{cache:"no-cache"});
+        if(!response.ok)throw new Error("Failed to load post-modal.html: "+response.status);
+
+        const html=await response.text();
+        const wrapper=document.createElement("div");
+        wrapper.innerHTML=html;
+
+        const scripts=[...wrapper.querySelectorAll("script")];
+        scripts.forEach(s=>s.remove());
+        document.body.appendChild(wrapper);
+
+        for(const oldScript of scripts){
+          const newScript=document.createElement("script");
+          if(oldScript.src)newScript.src=oldScript.src;
+          else newScript.textContent=oldScript.textContent;
+          document.body.appendChild(newScript);
+        }
+      }catch(error){
+        console.error("TaskNOVA Post Modal failed to load:",error);
+        return;
+      }
+    }
+
+    if(window.TaskNovaPostModal)window.TaskNovaPostModal.open();
+    else document.dispatchEvent(new CustomEvent("tasknova:open-post-modal"));
+  });
+})();
+</script>
 </body>
 </html>

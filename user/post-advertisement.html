@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#07111f" />
-  <meta name="description" content="Your TaskNOVA transaction history — deposits, withdrawals, earnings and more." />
+  <meta name="description" content="Post an advertisement on TaskNOVA — guaranteed views, real exposure." />
   <meta name="robots" content="noindex, nofollow" />
-  <title>Transaction History — TaskNOVA</title>
+  <title>Post Advertisement — TaskNOVA</title>
   <link
   rel="icon"
   type="image/png"
@@ -17,21 +17,22 @@
   href="../assets/icons/tasknova-icon.png"
 >
 
-  <!-- Boxicons Free -->
+  <!-- Boxicons -->
   <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <!-- Basic Icons -->
   <link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
-<!-- Filled Icons -->
-<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
-<!-- Brand Icons -->
-<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+  <!-- Filled Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+  <!-- Brand Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
 
   <!-- Poppins -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <!-- Transaction History page stylesheet -->
-  <link rel="stylesheet" href="../css/user/transactions.css">
+  <!-- Post Advertisement page stylesheet -->
+  <link rel="stylesheet" href="../css/user/post-advertisement.css">
 </head>
 <body>
 
@@ -129,7 +130,7 @@
               <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
               <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
               <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
-              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+              <a href="advertisements.html"><i class="bx bx-megaphone-alt"></i> Advertisements</a>
             </nav>
           </div>
         </div>
@@ -175,107 +176,148 @@
 
       <!-- Page heading -->
       <div class="greeting reveal">
-        <h1>Transaction History</h1>
-        <p>Every deposit, withdrawal, earning and spend on your account.</p>
+        <h1>Post an Advertisement</h1>
+        <p>Guaranteed views over a set duration — pick a package, fill in your ad, and post.</p>
       </div>
 
-      <!-- Top advertisement (default banner shown when no paid ad is active) -->
-      <div class="ad-banner reveal delay-1" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
-        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
-        <div class="ad-copy">
-          <strong>Advertise Your Business Here</strong>
-          <span>Reach TaskNOVA's audience for an affordable price.</span>
-        </div>
-        <span class="ad-tag">Ad</span>
+      <!-- Banner explainer (relevant when arriving from the default ad banner) -->
+      <div class="info-banner reveal delay-1">
+        <i class="bx bx-info-circle"></i>
+        <span>Banner placements (top/bottom of pages) are <strong>Monthly ads only</strong>.</span>
       </div>
 
-      <!-- ================= SUMMARY ================= -->
-      <div class="tx-summary-wrap">
-        <div class="tx-summary reveal delay-1">
-          <div class="tx-summary-card in">
-            <div class="ts-label">Total In</div>
-            <div class="ts-value" id="totalInValue">₦0.00</div>
+      <!-- ================= AD FORM ================= -->
+      <section class="ad-form-section">
+        <form id="postAdForm" class="ad-form" novalidate>
+
+          <div class="panel-msg" id="formMsg"></div>
+
+          <!-- Pack selection: Starter / Standard / Extended -->
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">1. Choose a package</h2>
+
+            <div class="w-field">
+              <label for="adDuration">Ad type</label>
+              <select id="adDuration" required>
+                <option value="" disabled selected>Choose an ad type</option>
+              </select>
+            </div>
+
+            <div class="w-field">
+              <label for="adPack">Guaranteed views</label>
+              <select id="adPack" required disabled>
+                <option value="" disabled selected>Choose an ad type first</option>
+              </select>
+            </div>
+
+            <div class="pack-preview" id="packPreview" style="display:none;">
+              <div class="pv-row"><span>Guaranteed views</span><strong id="pvViews">0</strong></div>
+              <div class="pv-row"><span>Duration</span><strong id="pvDuration">0 days</strong></div>
+              <div class="pv-row total"><span>Price</span><strong id="pvPrice">₦0</strong></div>
+            </div>
           </div>
-          <div class="tx-summary-card out">
-            <div class="ts-label">Total Out</div>
-            <div class="ts-value" id="totalOutValue">₦0.00</div>
+
+          <!-- Banner (Monthly) -->
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">Or — Banner (Monthly) <span class="optional-tag">30 days</span></h2>
+            <p class="wp-hint">Top/bottom/floating banner placements. Only 3 banner slots exist at a time.</p>
+
+            <div class="banner-slot-note" id="bannerSlotNote">
+              <i class="bx bx-loader-alt bx-spin"></i>
+              <span>Checking banner availability…</span>
+            </div>
+
+            <div class="w-field">
+              <label for="bannerPack">Banner package</label>
+              <select id="bannerPack" required disabled>
+                <option value="" disabled selected>Checking availability…</option>
+              </select>
+            </div>
           </div>
-        </div>
-      </div>
 
-      <!-- ================= FILTERS ================= -->
-      <div class="filter-scroll reveal delay-2" id="filterScroll">
-        <button type="button" class="filter-chip active" data-filter="all">
-          <i class="bx bx-list-ul"></i> All
-        </button>
-        <button type="button" class="filter-chip" data-filter="deposit">
-          <i class="bx bx-download"></i> Deposits
-        </button>
-        <button type="button" class="filter-chip" data-filter="withdrawal">
-          <i class="bx bx-upload"></i> Withdrawals
-        </button>
-        <button type="button" class="filter-chip" data-filter="task_payment">
-          <i class="bx bx-briefcase"></i> Task Payments
-        </button>
-        <button type="button" class="filter-chip" data-filter="ad_payment">
-          <i class="bx bx-megaphone"></i> Ad Payments
-        </button>
-        <button type="button" class="filter-chip" data-filter="referral">
-          <i class="bx bx-user-plus"></i> Referral Rewards
-        </button>
-        <button type="button" class="filter-chip" data-filter="airtime">
-          <i class="bx bx-mobile-alt"></i> Airtime
-        </button>
-        <button type="button" class="filter-chip" data-filter="data">
-          <i class="bx bx-wifi"></i> Data
-        </button>
-        <button type="button" class="filter-chip" data-filter="swap">
-          <i class="bx bx-transfer-alt"></i> Swap
-        </button>
-        <button type="button" class="filter-chip" data-filter="refund">
-          <i class="bx bx-undo"></i> Refunds
-        </button>
-        <button type="button" class="filter-chip" data-filter="decline_expense">
-          <i class="bx bx-x-circle"></i> Decline Expense
-        </button>
-        <button type="button" class="filter-chip" data-filter="unlock_fee">
-          <i class="bx bx-lock-open-alt"></i> Unlock Fee
-        </button>
-        <button type="button" class="filter-chip" data-filter="other">
-          <i class="bx bx-dots-horizontal-rounded"></i> Other
-        </button>
-      </div>
-
-      <!-- ================= TRANSACTION LIST ================= -->
-      <section class="tx-history-section">
-        <div id="txGroups">
-          <div class="tx-list">
-            <div class="tx-skeleton"></div>
-            <div class="tx-skeleton"></div>
-            <div class="tx-skeleton"></div>
-            <div class="tx-skeleton"></div>
-            <div class="tx-skeleton"></div>
+          <!-- Title -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">2. Title</h2>
+            <div class="w-field">
+              <label for="adTitle">Ad title</label>
+              <input type="text" id="adTitle" placeholder="e.g. Fresh Jollof Rice — Order Now" required maxlength="90">
+            </div>
           </div>
-        </div>
 
-        <div class="load-more-wrap" id="loadMoreWrap" style="display:none;">
-          <button type="button" class="load-more-btn" id="loadMoreBtn">
-            <span class="lm-spinner"></span>
-            <span>Load more</span>
-            <i class="bx bx-chevron-down"></i>
+          <!-- Image -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">3. Ad image <span class="optional-tag">optional</span></h2>
+            <div class="image-upload" id="imageUploadZone">
+              <input type="file" id="adImageInput" accept="image/*" hidden>
+              <div class="image-upload-empty" id="imageUploadEmpty">
+                <i class="bx bx-image-add"></i>
+                <span>Tap to add an image</span>
+              </div>
+              <img id="imagePreview" class="image-preview" style="display:none;" alt="Ad preview">
+              <div class="image-upload-progress" id="imageUploadProgress" style="display:none;">
+                <div class="iup-track"><div class="iup-fill" id="imageUploadFill"></div></div>
+                <span id="imageUploadPercent">0%</span>
+              </div>
+              <button type="button" class="image-remove-btn" id="imageRemoveBtn" style="display:none;" aria-label="Remove image">
+                <i class="bx bx-x"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">4. Description</h2>
+            <div class="w-field">
+              <label for="adDescription">What is this ad about?</label>
+              <textarea id="adDescription" rows="4" placeholder="Describe what you're advertising…" required></textarea>
+            </div>
+          </div>
+
+          <!-- Destination link -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">5. Link <span class="optional-tag">optional</span></h2>
+            <div class="w-field">
+              <label for="adLink">Where should a tap on this ad lead?</label>
+              <input type="url" id="adLink" placeholder="https://…">
+              <span class="field-note">e.g. your WhatsApp, Instagram, website, or catalogue link.</span>
+            </div>
+          </div>
+
+          <!-- Price -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">6. Price</h2>
+            <div class="w-field">
+              <label for="adPrice">Amount</label>
+              <div class="amount-input-wrap">
+                <span class="currency-prefix">₦</span>
+                <input type="number" id="adPrice" min="0" step="1" placeholder="Pick a package above first" required>
+              </div>
+              <span class="field-note" id="priceFloorNote">This is set by the package you picked — you can raise it, but not lower it.</span>
+            </div>
+          </div>
+
+          <!-- Balance -->
+          <div class="form-card cost-card reveal delay-3">
+            <div class="balance-row">
+              <span>Your Deposit Balance</span>
+              <span id="depositBalanceValue">₦0.00</span>
+            </div>
+          </div>
+
+          <!-- Non-refundable notice -->
+          <div class="policy-warning">
+            <i class="bx bx-error-circle"></i>
+            <span>Advertisements are non-refundable. If you delete an ad before it expires, you will not receive any balance back — even for unused views or remaining days.</span>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="postAdSubmit">
+            <span class="btn-spinner"></span>
+            <span class="btn-label">Post Advertisement</span>
+            <i class="bx bx-check"></i>
           </button>
-        </div>
-      </section>
 
-      <!-- Bottom advertisement -->
-      <div class="ad-banner bottom-banner reveal" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
-        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
-        <div class="ad-copy">
-          <strong>Advertise Your Business Here</strong>
-          <span>Reach TaskNOVA's audience for an affordable price.</span>
-        </div>
-        <span class="ad-tag">Ad</span>
-      </div>
+        </form>
+      </section>
 
     </div>
   </main>
@@ -289,7 +331,8 @@
     </div>
   </div>
 
-  <!-- Floating support (draggable, sits beneath the floating ad by default) -->
+  <!-- Floating support (draggable, sits beneath the floating ad by default).
+       Opens the Tawk.to chat widget — Skred is now used only for ad banner inquiries. -->
   <a class="support-fab" id="supportFab"
      href="#"
      aria-label="TaskNOVA Support"
@@ -311,26 +354,27 @@
     <a class="bn-item" href="advertisements.html">
       <i class="bx bx-grid-alt"></i> Ads
     </a>
-    <a class="bn-item active" href="transactions.html">
+    <a class="bn-item" href="transactions.html">
       <i class="bx bx-receipt"></i> Trans.
     </a>
   </nav>
 
-  <!-- Transaction history page logic (Firebase auth guard, filters, pagination) -->
-  <script type="module" src="../js/user/transactions.js"></script>
-<!-- Start of Tawk.to Script -->
-<script type="text/javascript">
-var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
-(function(){
-var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
-s1.async=true;
-s1.src='https://embed.tawk.to/6a81e96a7b55151d452bf3f6/1k05nfi74';
-s1.charset='UTF-8';
-s1.setAttribute('crossorigin','*');
-s0.parentNode.insertBefore(s1,s0);
-})();
-</script>
-<!-- End of Tawk.to Script -->
+  <!-- Post Advertisement page logic -->
+  <script type="module" src="../js/user/post-advertisement.js"></script>
+
+  <!-- Start of Tawk.to Script -->
+  <script type="text/javascript">
+  var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+  (function(){
+  var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+  s1.async=true;
+  s1.src='https://embed.tawk.to/6a81e96a7b55151d452bf3f6/1k05nfi74';
+  s1.charset='UTF-8';
+  s1.setAttribute('crossorigin','*');
+  s0.parentNode.insertBefore(s1,s0);
+  })();
+  </script>
+  <!-- End of Tawk.to Script -->
   <script>
 (function(){
   "use strict";
