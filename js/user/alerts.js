@@ -1,5 +1,5 @@
 /* =========================================================
-   TASKNOVA — TRANSACTION HISTORY PAGE LOGIC
+   TASKNOVA — ALERTS PAGE LOGIC
    Firebase v12.17.1 modular SDK
    ========================================================= */
 
@@ -15,11 +15,13 @@ import {
   onSnapshot,
   collection,
   query,
-  where,
   orderBy,
   limit,
   startAfter,
-  getDocs
+  getDocs,
+  updateDoc,
+  writeBatch,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -258,14 +260,6 @@ if (supportFab) {
   const supportDefaultTop = window.innerHeight - 160;
   const supportDefaultLeft = window.innerWidth - 96;
   makeDraggable(supportFab, "tasknova-float-support-pos", { left: supportDefaultLeft, top: supportDefaultTop });
-
-  supportFab.addEventListener("click", (e) => {
-    e.preventDefault();
-
-    if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
-      Tawk_API.toggle();
-    }
-  });
 }
 
 document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
@@ -273,34 +267,23 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   floatingAd.style.display = "none";
 });
 
+// Floating support now opens the Tawk.to chat widget instead of linking to Skred
+// (Skred is used only for ad banner inquiries — see the button on this page).
+supportFab?.addEventListener("click", (e) => {
+  e.preventDefault();
+  if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
+    Tawk_API.toggle();
+  }
+});
+
 /* ---------------------------------------------------------
    FORMAT HELPERS
    --------------------------------------------------------- */
-const nairaFormat = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  minimumFractionDigits: 2
-});
-
-function formatNaira(amount) {
-  return nairaFormat.format(Number(amount) || 0);
-}
-
 function formatTime(date) {
   if (!date) return "";
   return date.toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" });
 }
 
-function formatFullDateTime(date) {
-  if (!date) return "—";
-  return date.toLocaleString("en-NG", {
-    day: "numeric", month: "long", year: "numeric",
-    hour: "numeric", minute: "2-digit"
-  });
-}
-
-// Returns "Today", "Yesterday", or a formatted date — used as the
-// section heading a transaction is grouped under.
 function dateGroupLabel(date) {
   if (!date) return "Earlier";
   const now = new Date();
@@ -310,30 +293,35 @@ function dateGroupLabel(date) {
 
   if (date >= startOfToday) return "Today";
   if (date >= startOfYesterday) return "Yesterday";
-
   return date.toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 }
 
 /* ---------------------------------------------------------
-   TRANSACTION TYPE -> ICON / LABEL
+   ALERT TYPE -> ICON / SEVERITY (per section 80 of the doc)
    --------------------------------------------------------- */
-const TX_META = {
-  deposit: { icon: "bx-download", label: "Deposit" },
-  withdrawal: { icon: "bx-upload", label: "Withdrawal" },
-  task_payment: { icon: "bx-briefcase", label: "Task Payment" },
-  ad_payment: { icon: "bx-megaphone", label: "Advertisement Payment" },
-  referral: { icon: "bx-user-plus", label: "Referral Reward" },
-  airtime: { icon: "bx-mobile-alt", label: "Airtime Purchase" },
-  data: { icon: "bx-wifi", label: "Data Purchase" },
-  swap: { icon: "bx-transfer-alt", label: "Swap" },
-  refund: { icon: "bx-undo", label: "Refund" },
-  decline_expense: { icon: "bx-x-circle", label: "Wrongful Decline Expense" },
-  unlock_fee: { icon: "bx-lock-open-alt", label: "Unlock Fee" },
-  other: { icon: "bx-dots-horizontal-rounded", label: "Other" }
+const ALERT_META = {
+  task_approval: { icon: "bx-check-circle", severity: "success", label: "Task Approved" },
+  task_decline: { icon: "bx-x-circle", severity: "danger", label: "Task Declined" },
+  task_repost: { icon: "bx-refresh", severity: "neutral", label: "Task Reposted" },
+  submission_approval: { icon: "bx-badge-check", severity: "success", label: "Submission Approved" },
+  submission_decline: { icon: "bx-block", severity: "danger", label: "Submission Declined" },
+  wrongful_decline_resolution: { icon: "bx-shield-quarter", severity: "success", label: "Wrongful Decline Resolved" },
+  withdrawal_status: { icon: "bx-upload", severity: "neutral", label: "Withdrawal Update" },
+  ad_approval: { icon: "bx-megaphone-alt", severity: "success", label: "Advertisement Approved" },
+  ad_decline: { icon: "bx-megaphone-alt", severity: "danger", label: "Advertisement Declined" },
+  ad_edit_approval: { icon: "bx-edit-alt", severity: "success", label: "Ad Edit Approved" },
+  ad_edit_decline: { icon: "bx-edit-alt", severity: "danger", label: "Ad Edit Declined" },
+  referral_reward: { icon: "bx-gift", severity: "success", label: "Referral Reward" },
+  inactivity_reminder: { icon: "bx-time-five", severity: "neutral", label: "Inactivity Reminder" },
+  account_deletion_warning: { icon: "bx-error", severity: "warning", label: "Account Deletion Warning" },
+  account_deletion: { icon: "bx-user-x", severity: "danger", label: "Account Deleted" },
+  popup_removal_activation: { icon: "bx-shield-x", severity: "success", label: "Ad Pop-up Removal Activated" },
+  popup_removal_expiration: { icon: "bx-shield-x", severity: "warning", label: "Ad Pop-up Removal Expired" },
+  other: { icon: "bx-bell", severity: "neutral", label: "Notification" }
 };
 
 function metaFor(type) {
-  return TX_META[type] || TX_META.other;
+  return ALERT_META[type] || ALERT_META.other;
 }
 
 /* ---------------------------------------------------------
@@ -342,8 +330,7 @@ function metaFor(type) {
 const PAGE_SIZE = 20;
 
 let currentUser = null;
-let activeFilter = "all";
-let allLoadedTx = [];   // flat list of everything fetched so far, across pages
+let allLoadedAlerts = [];
 let lastVisibleDoc = null;
 let hasMore = true;
 let isLoading = false;
@@ -351,12 +338,11 @@ let isLoading = false;
 /* ---------------------------------------------------------
    DOM REFS
    --------------------------------------------------------- */
-const txGroups = document.getElementById("txGroups");
+const alertGroups = document.getElementById("alertGroups");
 const loadMoreWrap = document.getElementById("loadMoreWrap");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
-const filterScroll = document.getElementById("filterScroll");
-const totalInValue = document.getElementById("totalInValue");
-const totalOutValue = document.getElementById("totalOutValue");
+const unreadSummary = document.getElementById("unreadSummary");
+const markAllBtn = document.getElementById("markAllBtn");
 
 const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
@@ -365,106 +351,147 @@ const alertDot = document.getElementById("alertDot");
 const removeAdsStatus = document.getElementById("removeAdsStatus");
 
 /* ---------------------------------------------------------
-   RENDER: grouped list with expandable rows
+   RENDER
    --------------------------------------------------------- */
 function render() {
-  if (!allLoadedTx.length) {
-    txGroups.innerHTML = `
-      <div class="tx-empty">
-        <i class="bx bx-receipt"></i>
-        No transactions yet.
+  if (!allLoadedAlerts.length) {
+    alertGroups.innerHTML = `
+      <div class="alert-empty">
+        <i class="bx bx-bell-off"></i>
+        No alerts yet.
       </div>`;
     loadMoreWrap.style.display = "none";
     return;
   }
 
-  // Group into date buckets, preserving newest-first order.
   const groups = [];
   let currentLabel = null;
   let currentBucket = null;
 
-  allLoadedTx.forEach((tx) => {
-    const label = dateGroupLabel(tx.date);
+  allLoadedAlerts.forEach((alert) => {
+    const label = dateGroupLabel(alert.date);
     if (label !== currentLabel) {
       currentLabel = label;
       currentBucket = { label, rows: [] };
       groups.push(currentBucket);
     }
-    currentBucket.rows.push(tx);
+    currentBucket.rows.push(alert);
   });
 
-  txGroups.innerHTML = groups.map((group) => `
-    <div class="tx-date-group">
-      <div class="tx-date-heading">${group.label}</div>
-      <div class="tx-list">
-        ${group.rows.map(renderTxItem).join("")}
+  alertGroups.innerHTML = groups.map((group) => `
+    <div class="alert-date-group">
+      <div class="alert-date-heading">${group.label}</div>
+      <div class="alert-list">
+        ${group.rows.map(renderAlertItem).join("")}
       </div>
     </div>
   `).join("");
 
-  // Wire up expand/collapse for each row (delegation would also work,
-  // but explicit binding keeps this simple to follow).
-  txGroups.querySelectorAll(".tx-item").forEach((item) => {
-    const row = item.querySelector(".tx-row");
+  alertGroups.querySelectorAll(".alert-item").forEach((item) => {
+    const row = item.querySelector(".alert-row");
     row.addEventListener("click", () => {
       const wasOpen = item.classList.contains("open");
-      txGroups.querySelectorAll(".tx-item.open").forEach((el) => el.classList.remove("open"));
-      if (!wasOpen) item.classList.add("open");
+      alertGroups.querySelectorAll(".alert-item.open").forEach((el) => el.classList.remove("open"));
+      if (!wasOpen) {
+        item.classList.add("open");
+        const id = item.dataset.id;
+        const alert = allLoadedAlerts.find((a) => a.id === id);
+        if (alert && !alert.read) markAsRead(alert);
+      }
     });
   });
 
   loadMoreWrap.style.display = hasMore ? "flex" : "none";
 }
 
-function renderTxItem(tx) {
-  const kind = tx.direction === "credit" ? "credit" : tx.direction === "pending" ? "pending" : "debit";
-  const meta = metaFor(tx.type);
-  const sign = kind === "credit" ? "+" : kind === "pending" ? "" : "−";
-  const status = tx.status || (kind === "pending" ? "pending" : "successful");
-
+function renderAlertItem(alert) {
+  const meta = metaFor(alert.type);
   return `
-    <div class="tx-item ${kind}" data-id="${tx.id}">
-      <div class="tx-row">
-        <div class="tx-icon"><i class="bx ${meta.icon}"></i></div>
-        <div class="tx-info">
-          <strong>${tx.title || meta.label}</strong>
-          <span>${formatTime(tx.date)}${tx.balanceType ? " · " + tx.balanceType : ""}</span>
-        </div>
-        <div class="tx-amount">${sign}${formatNaira(tx.amount)}</div>
-        <i class="bx bx-chevron-down tx-chevron"></i>
-      </div>
-      <div class="tx-detail">
-        <div>
-          <div class="tx-detail-inner">
-            <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
-            <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
-            <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
-            ${tx.balanceType ? `<div class="tx-detail-row"><span>Balance affected</span><span>${tx.balanceType}</span></div>` : ""}
-            ${tx.description ? `<div class="tx-detail-row"><span>Details</span><span>${tx.description}</span></div>` : ""}
-            ${tx.reference ? `<div class="tx-detail-row"><span>Reference</span><span>${tx.reference}</span></div>` : ""}
+    <div class="alert-item ${meta.severity} ${alert.read ? "" : "unread"}" data-id="${alert.id}">
+      <div class="alert-row">
+        <div class="alert-icon"><i class="bx ${meta.icon}"></i></div>
+        <div class="alert-info">
+          <div class="alert-info-top">
+            <strong>${alert.title || meta.label}</strong>
+            ${alert.read ? "" : `<span class="unread-dot"></span>`}
           </div>
+          <span class="alert-snippet">${alert.message || ""}</span>
+          <span class="alert-time">${formatTime(alert.date)}</span>
+        </div>
+        <i class="bx bx-chevron-down alert-chevron"></i>
+      </div>
+      <div class="alert-detail">
+        <div>
+          <div class="alert-detail-inner">${alert.message || "No further details."}</div>
         </div>
       </div>
     </div>`;
 }
 
-function updateSummary() {
-  let totalIn = 0;
-  let totalOut = 0;
-  allLoadedTx.forEach((tx) => {
-    if (tx.direction === "credit") totalIn += Number(tx.amount) || 0;
-    if (tx.direction === "debit") totalOut += Number(tx.amount) || 0;
-  });
-  totalInValue.textContent = formatNaira(totalIn);
-  totalOutValue.textContent = formatNaira(totalOut);
+function updateUnreadSummary() {
+  const unreadCount = allLoadedAlerts.filter((a) => !a.read).length;
+  if (unreadCount === 0) {
+    unreadSummary.textContent = "All caught up";
+    markAllBtn.style.display = "none";
+  } else {
+    unreadSummary.textContent = `${unreadCount} unread`;
+    markAllBtn.style.display = "inline-flex";
+  }
 }
 
 /* ---------------------------------------------------------
-   FETCH (paginated, filterable)
-   users/{uid}/transactions — ordered newest first.
-   Filtering by type requires a composite index on
-   (type asc, createdAt desc); Firestore will prompt you with
-   a direct link to create it the first time this query runs.
+   MARK AS READ
+   --------------------------------------------------------- */
+async function markAsRead(alert) {
+  alert.read = true; // optimistic update
+  updateUnreadSummary();
+  document.querySelector(`.alert-item[data-id="${alert.id}"]`)?.classList.remove("unread");
+
+  try {
+    await updateDoc(doc(db, "users", currentUser.uid, "notifications", alert.id), {
+      read: true,
+      readAt: serverTimestamp()
+    });
+  } catch (err) {
+    console.error("Mark as read error:", err);
+  }
+}
+
+markAllBtn.addEventListener("click", async () => {
+  if (!currentUser) return;
+  markAllBtn.disabled = true;
+
+  try {
+    const unreadQuery = query(
+      collection(db, "users", currentUser.uid, "notifications"),
+      orderBy("createdAt", "desc")
+    );
+    const snap = await getDocs(unreadQuery);
+
+    // Firestore batches cap at 500 writes — chunk just in case there's a
+    // very long unread backlog.
+    const unreadDocs = snap.docs.filter((d) => d.data().read !== true);
+    for (let i = 0; i < unreadDocs.length; i += 450) {
+      const chunk = unreadDocs.slice(i, i + 450);
+      const batch = writeBatch(db);
+      chunk.forEach((d) => {
+        batch.update(d.ref, { read: true, readAt: serverTimestamp() });
+      });
+      await batch.commit();
+    }
+
+    allLoadedAlerts = allLoadedAlerts.map((a) => ({ ...a, read: true }));
+    render();
+    updateUnreadSummary();
+  } catch (err) {
+    console.error("Mark all as read error:", err);
+  } finally {
+    markAllBtn.disabled = false;
+  }
+});
+
+/* ---------------------------------------------------------
+   FETCH (paginated)
    --------------------------------------------------------- */
 async function fetchPage(reset = false) {
   if (!currentUser || isLoading) return;
@@ -473,20 +500,15 @@ async function fetchPage(reset = false) {
   loadMoreBtn.disabled = true;
 
   if (reset) {
-    allLoadedTx = [];
+    allLoadedAlerts = [];
     lastVisibleDoc = null;
     hasMore = true;
-    txGroups.innerHTML = `<div class="tx-list"><div class="tx-skeleton"></div><div class="tx-skeleton"></div><div class="tx-skeleton"></div></div>`;
+    alertGroups.innerHTML = `<div class="alert-list"><div class="alert-skeleton"></div><div class="alert-skeleton"></div><div class="alert-skeleton"></div></div>`;
   }
 
   try {
-    const baseRef = collection(db, "users", currentUser.uid, "transactions");
-    const constraints = [];
-
-    if (activeFilter !== "all") {
-      constraints.push(where("type", "==", activeFilter));
-    }
-    constraints.push(orderBy("createdAt", "desc"));
+    const baseRef = collection(db, "users", currentUser.uid, "notifications");
+    const constraints = [orderBy("createdAt", "desc")];
     if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
     constraints.push(limit(PAGE_SIZE));
 
@@ -500,26 +522,22 @@ async function fetchPage(reset = false) {
 
       snap.docs.forEach((d) => {
         const data = d.data();
-        allLoadedTx.push({
+        allLoadedAlerts.push({
           id: d.id,
-          title: data.title || null,
           type: data.type || "other",
-          direction: data.direction || "debit",
-          amount: data.amount || 0,
-          status: data.status || "",
-          balanceType: data.balanceType || "",
-          description: data.description || "",
-          reference: data.reference || "",
+          title: data.title || "",
+          message: data.message || "",
+          read: !!data.read,
           date: data.createdAt?.toDate ? data.createdAt.toDate() : null
         });
       });
     }
 
     render();
-    updateSummary();
+    updateUnreadSummary();
   } catch (err) {
-    console.error("Transaction history fetch error:", err);
-    txGroups.innerHTML = `<div class="tx-empty"><i class="bx bx-error-circle"></i>Couldn't load transactions. Please try again.</div>`;
+    console.error("Alerts fetch error:", err);
+    alertGroups.innerHTML = `<div class="alert-empty"><i class="bx bx-error-circle"></i>Couldn't load alerts. Please try again.</div>`;
   } finally {
     isLoading = false;
     loadMoreBtn.classList.remove("loading");
@@ -530,23 +548,87 @@ async function fetchPage(reset = false) {
 loadMoreBtn.addEventListener("click", () => fetchPage(false));
 
 /* ---------------------------------------------------------
-   FILTER CHIPS
+   AUTH GUARD
    --------------------------------------------------------- */
-filterScroll.querySelectorAll(".filter-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    if (chip.dataset.filter === activeFilter) return;
-    filterScroll.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
-    chip.classList.add("active");
-    activeFilter = chip.dataset.filter;
-    fetchPage(true);
-  });
+let unsubscribeUserDoc = null;
+
+/* ---------------------------------------------------------
+   NOTIFICATION SETTINGS PANEL
+   Slides open/closed. Preferences are read and written directly
+   on the user doc (users/{uid}.notificationPrefs) — a plain
+   real-time Firestore write, no Cloud Function involved.
+   --------------------------------------------------------- */
+const settingsToggleBtn = document.getElementById("settingsToggleBtn");
+const settingsPanelViewport = document.getElementById("settingsPanelViewport");
+const emailPrefSwitch = document.getElementById("emailPrefSwitch");
+const devicePrefSwitch = document.getElementById("devicePrefSwitch");
+const settingsNote = document.getElementById("settingsNote");
+
+settingsToggleBtn.addEventListener("click", () => {
+  const isOpen = settingsPanelViewport.classList.toggle("open");
+  settingsToggleBtn.setAttribute("aria-expanded", String(isOpen));
+});
+
+function setSwitch(el, on) {
+  el.setAttribute("aria-checked", String(!!on));
+}
+
+// Each toggle only touches its own field via dot-notation, so the two
+// switches never clobber each other.
+async function savePref(field, value) {
+  if (!currentUser) return;
+  try {
+    await updateDoc(doc(db, "users", currentUser.uid), {
+      [`notificationPrefs.${field}`]: value
+    });
+  } catch (err) {
+    console.error("Save notification pref error:", err);
+    settingsNote.textContent = "Couldn't save that — please try again.";
+    settingsNote.classList.add("error");
+  }
+}
+
+emailPrefSwitch.addEventListener("click", () => {
+  const next = emailPrefSwitch.getAttribute("aria-checked") !== "true";
+  setSwitch(emailPrefSwitch, next);
+  settingsNote.classList.remove("error");
+  settingsNote.textContent = "";
+  savePref("email", next);
+});
+
+devicePrefSwitch.addEventListener("click", async () => {
+  const next = devicePrefSwitch.getAttribute("aria-checked") !== "true";
+  settingsNote.classList.remove("error");
+
+  if (next) {
+    // Turning device notifications on — ask the browser/OS for permission.
+    // In a wrapped app (e.g. via Capacitor), the equivalent native push
+    // permission prompt would replace this call, but the stored
+    // preference and Firestore field stay the same either way.
+    if (!("Notification" in window)) {
+      settingsNote.textContent = "Device notifications aren't supported in this browser.";
+      settingsNote.classList.add("error");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") {
+      settingsNote.textContent = "Permission was denied — enable notifications for this site in your browser/device settings to turn this on.";
+      settingsNote.classList.add("error");
+      setSwitch(devicePrefSwitch, false);
+      savePref("device", false);
+      return;
+    }
+    settingsNote.textContent = "";
+  }
+
+  setSwitch(devicePrefSwitch, next);
+  savePref("device", next);
 });
 
 /* ---------------------------------------------------------
    AUTH GUARD
    --------------------------------------------------------- */
-let unsubscribeUserDoc = null;
-
 onAuthStateChanged(auth, (user) => {
   if (!user) {
     window.location.href = "login.html";
@@ -572,22 +654,69 @@ onAuthStateChanged(auth, (user) => {
     if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
     if (removeAdsStatus) removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
+
+    // Reflect saved preferences in the toggle switches (defaults: email on, device off)
+    const prefs = data.notificationPrefs || {};
+    setSwitch(emailPrefSwitch, prefs.email !== false);
+    setSwitch(devicePrefSwitch, prefs.device === true);
   }, (err) => {
     console.error("User doc listener error:", err);
   });
 
-  // Lightweight unread check — existence only (limit 1), not a count.
-  // Shows/hides the header dot, nothing more.
-  const unreadCheckQuery = query(
-    collection(db, "users", user.uid, "notifications"),
-    where("read", "==", false),
-    limit(1)
-  );
-  onSnapshot(unreadCheckQuery, (snap) => {
-    alertDot?.classList.toggle("show", !snap.empty);
-  }, (err) => {
-    console.error("Alert dot listener error:", err);
-  });
+  // The header badge on every other page uses its own lightweight
+  // existence-check listener (see the snippet shared alongside this page) —
+  // this page doesn't need to duplicate that here.
+  alertDot?.classList.remove("show");
 
   fetchPage(true);
 });
+
+/* ===========================================================
+   BACKEND NOTE
+   ===========================================================
+   Keep this lightweight — per the platform's notification design:
+
+   - Notifications are just documents at
+     users/{uid}/notifications/{id}, written directly by whatever
+     already handles the underlying event. e.g. when an admin
+     approves a submission, that same write (update the submission,
+     credit the wallet) also creates the notification doc right
+     there — no separate Cloud Function needed just to create it.
+
+   - Reserve actual Cloud Functions for things that genuinely can't
+     depend on a user's browser being open: scheduled inactivity
+     reminders, automatic account deletion, and similar timed jobs.
+     A scheduled function to delete notifications older than
+     30–60 days is a reasonable one to add later, so the
+     subcollection doesn't grow forever — not required to launch.
+
+   - This page deliberately avoids expensive patterns: it fetches
+     a bounded page of recent notifications (not the whole history),
+     and the header's unread dot (see the snippet applied across
+     every page) checks existence with limit(1) rather than
+     counting the whole unread set.
+
+   Expected doc shape at users/{uid}/notifications/{id}:
+     {
+       type: "task_approval" | "task_decline" | "task_repost" |
+             "submission_approval" | "submission_decline" |
+             "wrongful_decline_resolution" | "withdrawal_status" |
+             "ad_approval" | "ad_decline" | "ad_edit_approval" |
+             "ad_edit_decline" | "referral_reward" |
+             "inactivity_reminder" | "account_deletion_warning" |
+             "account_deletion" | "popup_removal_activation" |
+             "popup_removal_expiration" | "other",
+       title: "Short headline shown in the list",
+       message: "Full detail shown when the alert is expanded",
+       read: false,
+       createdAt: serverTimestamp()
+     }
+
+   users/{uid}.notificationPrefs (this page reads/writes it directly):
+     { email: true, device: false }
+   ===========================================================
+   NOTE ON THE SETTINGS PANEL LOAD:
+   The toggles above are set from the live user-doc listener in the
+   auth guard block — see the onSnapshot callback, which reads
+   data.notificationPrefs and calls setSwitch() for each one.
+   =========================================================== */

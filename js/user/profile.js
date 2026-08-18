@@ -12,7 +12,11 @@ import {
 import {
   getFirestore,
   doc,
-  onSnapshot
+  onSnapshot,
+  collection,
+  query,
+  where,
+  limit
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -153,7 +157,7 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
    (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
    with the Admin's advertising-specific Skred link if it differs from support.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "https://invite.skred.mobi/Qs_nAiZ9TrqV9u2D0qYdfw.scQy7QXmaD_0bgLmTFh0f-y7Ihtw1tbXpftAcT-G-pc";
+const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
@@ -395,7 +399,16 @@ onAuthStateChanged(auth, (user) => {
     console.error("Profile listener error:", err);
   });
 
-  // NOTE: Wire this up to a real "alerts" subcollection query (where read == false)
-  // once the Alerts page/schema is built. Left inactive for now.
-  alertDot?.classList.remove("show");
+  // Lightweight unread check — existence only (limit 1), not a count.
+  // Shows/hides the header dot, nothing more.
+  const unreadCheckQuery = query(
+    collection(db, "users", user.uid, "notifications"),
+    where("read", "==", false),
+    limit(1)
+  );
+  onSnapshot(unreadCheckQuery, (snap) => {
+    alertDot?.classList.toggle("show", !snap.empty);
+  }, (err) => {
+    console.error("Alert dot listener error:", err);
+  });
 });
