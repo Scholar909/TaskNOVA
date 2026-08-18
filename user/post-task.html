@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="Post a task on TaskNOVA and get real people to complete it." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Post Task — TaskNOVA</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <!-- Basic Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+  <!-- Filled Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+  <!-- Brand Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Post Task page stylesheet -->
+  <link rel="stylesheet" href="../css/user/post-task.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="home.html" aria-label="TaskNOVA home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+        </a>
+
+        <div class="nav-actions">
+          <a class="icon-btn" href="alerts.html" aria-label="Alerts">
+            <i class="bx bx-bell"></i>
+            <span class="alert-dot" id="alertDot"></span>
+          </a>
+
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">T</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">&nbsp;</span>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAccount">
+        <button type="button" class="menu-group-label">
+          Account <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
+              <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
+              <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupEarn">
+        <button type="button" class="menu-group-label">
+          Earn <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="earn.html"><i class="bx bx-task"></i> Earn / Tasks</a>
+              <a href="track-work.html"><i class="bx bx-check-double"></i> Track Work Done</a>
+              <a href="request-task.html"><i class="bx bx-message-square-add"></i> Request Task</a>
+              <a href="refer.html"><i class="bx bx-gift"></i> Refer a Friend</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertise">
+        <button type="button" class="menu-group-label">
+          Advertise <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="post-task.html"><i class="bx bx-plus-circle"></i> Post Task</a>
+              <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
+              <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
+              <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
+              <a href="advertisements.html"><i class="bx bx-megaphone-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupSupport">
+        <button type="button" class="menu-group-label">
+          Support <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="alerts.html"><i class="bx bx-bell"></i> Alerts</a>
+              <a href="support.html"><i class="bx bx-support"></i> Support</a>
+              <a href="help.html"><i class="bx bx-help-circle"></i> Help</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <a class="menu-remove-ads" href="remove-ads.html">
+        <i class="bx bx-shield-x"></i>
+        Remove Ad Pop-ups
+        <span class="active-tag" id="removeAdsStatus" style="display:none;">Active</span>
+      </a>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Post a Task</h1>
+        <p>Pick a task, set your workers, and post — scroll down to fill everything in one go.</p>
+      </div>
+
+      <!-- Top advertisement (default banner shown when no paid ad is active) -->
+      <div class="ad-banner reveal delay-1" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+      <!-- ================= POST TASK FORM ================= -->
+      <section class="task-form-section">
+        <form id="postTaskForm" class="task-form" novalidate>
+
+          <div class="panel-msg" id="wizardMsg"></div>
+
+          <!-- Category & task type -->
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">1. Pick a task</h2>
+
+            <div class="w-field">
+              <label for="taskCategory">Category</label>
+              <select id="taskCategory" required>
+                <option value="" disabled selected>Choose a category</option>
+              </select>
+            </div>
+
+            <div class="w-field">
+              <label for="taskSubcategory">Task</label>
+              <select id="taskSubcategory" required disabled>
+                <option value="" disabled selected>Choose a category first</option>
+              </select>
+              <span class="field-note">Price shown is the total you pay per worker.</span>
+            </div>
+          </div>
+
+          <!-- Title -->
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">2. Title</h2>
+            <div class="w-field">
+              <label for="taskTitle">Task title</label>
+              <input type="text" id="taskTitle" placeholder="Pick a task above first" required maxlength="90">
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">3. Description</h2>
+            <div class="w-field">
+              <label for="taskDescription">How workers should complete this</label>
+              <textarea id="taskDescription" rows="4" placeholder="Pick a task above first" required></textarea>
+            </div>
+            <div class="fixed-clause">
+              <i class="bx bx-info-circle"></i>
+              <span>This is always added to every task automatically: <em id="retentionClausePreview"></em></span>
+            </div>
+          </div>
+
+          <!-- Task link -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">4. Task link</h2>
+            <div class="w-field">
+              <label for="taskLink">Where should workers be sent?</label>
+              <input type="url" id="taskLink" placeholder="https://…" required>
+              <span class="field-note">e.g. your WhatsApp group invite link, Instagram profile, website, or form.</span>
+            </div>
+          </div>
+
+          <!-- Additional instructions -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">5. Additional instructions <span class="optional-tag">optional</span></h2>
+            <div class="w-field">
+              <textarea id="taskInstructions" rows="3" placeholder="Only add details that fit within the task title above…"></textarea>
+            </div>
+            <div class="scope-warning">
+              <i class="bx bx-shield-quarter"></i>
+              <span>Instructions must stay within the task title you picked. Asking workers to do more than "<span id="scopeTitleRef">this task</span>" means raising the amount per worker below — otherwise the task will be declined at review.</span>
+            </div>
+          </div>
+
+          <!-- Proof -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">6. Proof required</h2>
+            <ul class="proof-list" id="proofList"></ul>
+
+            <div class="screenshot-row">
+              <div class="sr-text">
+                <strong>Require screenshot proof</strong>
+                <span>Workers must attach screenshot(s) with their submission.</span>
+              </div>
+              <button type="button" class="pref-switch" id="screenshotSwitch" role="switch" aria-checked="true">
+                <span class="ps-knob"></span>
+              </button>
+            </div>
+
+            <div class="stepper-row" id="screenshotStepperRow">
+              <span class="stepper-label">Screenshots required</span>
+              <div class="stepper">
+                <button type="button" class="stepper-btn" id="screenshotMinus" aria-label="Decrease">−</button>
+                <span class="stepper-value" id="screenshotCount">1</span>
+                <button type="button" class="stepper-btn" id="screenshotPlus" aria-label="Increase">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Amount per worker -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">7. Amount per worker</h2>
+            <div class="w-field">
+              <label for="amountPerWorker">Total you pay, per worker</label>
+              <div class="amount-input-wrap">
+                <span class="currency-prefix">₦</span>
+                <input type="number" id="amountPerWorker" min="0" step="1" placeholder="Pick a task above first" required>
+              </div>
+              <span class="field-note" id="amountFloorNote">This already includes TaskNOVA's fee — it can't be set lower than the task's listed price.</span>
+            </div>
+          </div>
+
+          <!-- Workers required -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">8. Workers required</h2>
+            <div class="w-field">
+              <label for="workersRequired">How many workers</label>
+              <input type="number" id="workersRequired" min="5" step="1" value="5" required>
+              <span class="field-note">Minimum 5 workers per task.</span>
+            </div>
+
+            <div class="w-field">
+              <label for="taskLocation">Location</label>
+              <select id="taskLocation">
+                <option value="Nationwide">Nationwide (anyone can do this)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Urgent -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">9. Mark as urgent <span class="optional-tag">optional</span></h2>
+            <div class="urgent-row">
+              <div class="sr-text">
+                <strong>Show higher in the Earn feed</strong>
+                <span>Costs extra, starting at ₦200.</span>
+              </div>
+              <button type="button" class="pref-switch" id="urgentSwitch" role="switch" aria-checked="false">
+                <span class="ps-knob"></span>
+              </button>
+            </div>
+
+            <div class="urgent-amount-viewport" id="urgentAmountViewport">
+              <div>
+                <div class="w-field urgent-amount-field">
+                  <label for="urgentAmount">Urgent placement fee</label>
+                  <div class="amount-input-wrap">
+                    <span class="currency-prefix">₦</span>
+                    <input type="number" id="urgentAmount" min="200" step="10" value="200">
+                  </div>
+                  <span class="field-note">Minimum ₦200 — set higher for more visibility.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cost summary -->
+          <div class="form-card cost-card reveal delay-3">
+            <h2 class="fc-title">Total cost</h2>
+            <div class="cost-summary">
+              <div class="cs-row">
+                <span>₦<span id="csPerWorker">0</span> × <span id="csWorkers">5</span> workers</span>
+                <span id="csSubtotal">₦0</span>
+              </div>
+              <div class="cs-row" id="csUrgentRow" style="display:none;">
+                <span>Urgent placement</span>
+                <span id="csUrgentFee">₦0</span>
+              </div>
+              <div class="cs-row total">
+                <span>Total</span>
+                <span id="csGrandTotal">₦0</span>
+              </div>
+            </div>
+
+            <div class="balance-row">
+              <span>Your Deposit Balance</span>
+              <span id="csBalance">₦0.00</span>
+            </div>
+          </div>
+
+          <!-- Warning -->
+          <div class="policy-warning">
+            <i class="bx bx-error-circle"></i>
+            <span>By posting, you confirm your instructions match the task title, and you agree that if this task is undone before 7 days and reported, the worker responsible may face account consequences. Tasks that don't follow the rules can be declined at review.</span>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="wizardSubmit">
+            <span class="btn-spinner"></span>
+            <span class="btn-label">Post Task</span>
+            <i class="bx bx-check"></i>
+          </button>
+
+          <button type="button" class="btn btn-ghost" id="saveDraftBtn">
+            <i class="bx bx-save"></i> Save as draft instead
+          </button>
+
+        </form>
+      </section>
+
+      <!-- Bottom advertisement -->
+      <div class="ad-banner bottom-banner reveal" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Floating advertisement (draggable) -->
+  <div class="floating-ad" id="floatingAd" data-default-ad>
+    <span class="fa-close" id="floatingAdClose"><i class="bx bx-x"></i></span>
+    <div class="fa-body">
+      <i class="bx bx-megaphone"></i>
+      Advertise Here
+    </div>
+  </div>
+
+  <!-- Floating support (draggable, sits beneath the floating ad by default).
+       Opens the Tawk.to chat widget — Skred is now used only for ad banner inquiries. -->
+  <a class="support-fab" id="supportFab"
+     href="#"
+     aria-label="TaskNOVA Support"
+     title="TaskNOVA Support">
+    <img src="../assets/images/icon_logo.png" alt="">
+  </a>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="home.html">
+      <i class="bx bxs-home"></i> Home
+    </a>
+    <a class="bn-item post-item" href="post.html">
+      <span class="bn-post-circle"><i class="bx bx-plus"></i></span>
+      Post
+    </a>
+    <a class="bn-item" href="earn.html">
+      <i class="bx bx-task"></i> Earn
+    </a>
+    <a class="bn-item" href="advertisements.html">
+      <i class="bx bx-grid-alt"></i> Ads
+    </a>
+    <a class="bn-item" href="transactions.html">
+      <i class="bx bx-receipt"></i> Trans.
+    </a>
+  </nav>
+
+  <!-- Post Task page logic -->
+  <script type="module" src="../js/user/post-task.js"></script>
+
+  <!-- Start of Tawk.to Script -->
+  <script type="text/javascript">
+  var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+  (function(){
+  var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+  s1.async=true;
+  s1.src='https://embed.tawk.to/6a81e96a7b55151d452bf3f6/1k05nfi74';
+  s1.charset='UTF-8';
+  s1.setAttribute('crossorigin','*');
+  s0.parentNode.insertBefore(s1,s0);
+  })();
+  </script>
+  <!-- End of Tawk.to Script -->
+</body>
+</html>
