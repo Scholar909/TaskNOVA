@@ -354,7 +354,6 @@ const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
-const removeAdsStatus = document.getElementById("removeAdsStatus");
 const greetingName = document.getElementById("greetingName");
 
 let unsubscribeUserDoc = null;
@@ -402,10 +401,6 @@ onAuthStateChanged(auth, (user) => {
       outstandingText.textContent = `You have an outstanding balance of ${formatNaira(outstanding)}. This is deducted automatically from your next deposit.`;
     } else {
       outstandingBanner.classList.remove("show");
-    }
-
-    if (removeAdsStatus) {
-      removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
     }
   }, (err) => {
     console.error("Wallet listener error:", err);

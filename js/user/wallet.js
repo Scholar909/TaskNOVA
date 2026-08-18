@@ -435,7 +435,6 @@ const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
-const removeAdsStatus = document.getElementById("removeAdsStatus");
 
 let currentUser = null;
 let currentWallet = { deposit: 0, earned: 0 };
@@ -469,7 +468,6 @@ onAuthStateChanged(auth, (user) => {
     if (userNameEl) userNameEl.textContent = fullName || user.email;
     if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
-    if (removeAdsStatus) removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
 
     currentWallet.deposit = data.wallet?.deposit ?? 0;
     currentWallet.earned = data.wallet?.earned ?? 0;

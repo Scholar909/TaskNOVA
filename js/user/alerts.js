@@ -314,10 +314,7 @@ const ALERT_META = {
   referral_reward: { icon: "bx-gift", severity: "success", label: "Referral Reward" },
   inactivity_reminder: { icon: "bx-time-five", severity: "neutral", label: "Inactivity Reminder" },
   account_deletion_warning: { icon: "bx-error", severity: "warning", label: "Account Deletion Warning" },
-  account_deletion: { icon: "bx-user-x", severity: "danger", label: "Account Deleted" },
-  popup_removal_activation: { icon: "bx-shield-x", severity: "success", label: "Ad Pop-up Removal Activated" },
-  popup_removal_expiration: { icon: "bx-shield-x", severity: "warning", label: "Ad Pop-up Removal Expired" },
-  other: { icon: "bx-bell", severity: "neutral", label: "Notification" }
+  account_deletion: { icon: "bx-user-x", severity: "danger", label: "Account Deleted" }
 };
 
 function metaFor(type) {
@@ -348,7 +345,6 @@ const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
-const removeAdsStatus = document.getElementById("removeAdsStatus");
 
 /* ---------------------------------------------------------
    RENDER
@@ -653,7 +649,6 @@ onAuthStateChanged(auth, (user) => {
     if (userNameEl) userNameEl.textContent = fullName || user.email;
     if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
-    if (removeAdsStatus) removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
 
     // Reflect saved preferences in the toggle switches (defaults: email on, device off)
     const prefs = data.notificationPrefs || {};

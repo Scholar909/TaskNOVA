@@ -315,7 +315,6 @@ const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
-const removeAdsStatus = document.getElementById("removeAdsStatus");
 
 let unsubscribeUserDoc = null;
 
@@ -344,7 +343,6 @@ onAuthStateChanged(auth, (user) => {
     if (userNameEl) userNameEl.textContent = fullName || user.email;
     if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
-    if (removeAdsStatus) removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
 
     // Profile hero
     if (profileAvatar) profileAvatar.textContent = initial;
