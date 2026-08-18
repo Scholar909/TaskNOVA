@@ -803,30 +803,6 @@ img { display: block; max-width: 100%; }
 
 .menu-divider { height: 1px; background: var(--line); margin: 10px 0; }
 
-.menu-remove-ads {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 10px;
-  border-radius: 12px;
-  color: var(--text-soft);
-  font-size: .87rem;
-  font-weight: 500;
-  margin-bottom: 10px;
-}
-
-.menu-remove-ads i { font-size: 1.05rem; width: 20px; text-align: center; color: var(--warning); }
-.menu-remove-ads:hover { color: var(--text); background: var(--surface-2); }
-.menu-remove-ads .active-tag {
-  margin-left: auto;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--success) 16%, transparent);
-  color: var(--success);
-  font-size: .62rem;
-  font-weight: 700;
-}
-
 .menu-theme-row {
   display: flex;
   align-items: center;
