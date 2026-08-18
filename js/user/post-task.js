@@ -349,7 +349,7 @@ const TASK_CATALOG = {
   ]},
   tiktok: { label: "TikTok", items: [
     { title: "Follow TikTok account", worker: 40, platform: 20, proof: "follow" },
-    { title: "Visit TikTok profile", worker: 25, platform: 10, proof: "visit" },
+    { title: "Like TikTok promotional content", worker: 25, platform: 10, proof: "visit" },
     { title: "Watch provided promotional content", worker: 30, platform: 10, proof: "watch" },
     { title: "Share promotional content through permitted channel", worker: 50, platform: 20, proof: "share" },
     { title: "Test promotional content", worker: 50, platform: 20, proof: "test" },
