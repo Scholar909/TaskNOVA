@@ -267,7 +267,7 @@
 
             <!-- ============ WITHDRAW PANEL ============ -->
             <form class="wallet-panel" id="withdrawForm" novalidate>
-              <p class="panel-intro">Withdrawals are paid from your <strong>Earned Balance</strong> only. Minimum ₦1,000 · 20% withdrawal fee.</p>
+              <p class="panel-intro">Withdrawals are paid from your <strong>Earned Balance</strong> only. Minimum ₦500 · 5% withdrawal fee.</p>
 
               <div class="panel-msg" id="withdrawMsg"></div>
 
@@ -275,12 +275,12 @@
                 <label for="withdrawAmount">Amount</label>
                 <div class="amount-input-wrap">
                   <span class="currency-prefix">₦</span>
-                  <input type="number" id="withdrawAmount" name="withdrawAmount" min="1000" step="1" placeholder="0.00" inputmode="numeric" required>
+                  <input type="number" id="withdrawAmount" name="withdrawAmount" min="500" step="1" placeholder="0.00" inputmode="numeric" required>
                 </div>
               </div>
 
               <div class="fee-breakdown">
-                <div class="fee-row"><span>Withdrawal fee (20%)</span><span id="withdrawFeeValue">₦0.00</span></div>
+                <div class="fee-row"><span>Withdrawal fee (5%)</span><span id="withdrawFeeValue">₦0.00</span></div>
                 <div class="fee-row total"><span>You'll receive</span><span id="withdrawReceiveValue">₦0.00</span></div>
               </div>
 

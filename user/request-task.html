@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="Request a custom task type on TaskNOVA that isn't in the catalogue yet." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Request Task — TaskNOVA</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <!-- Basic Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+  <!-- Filled Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+  <!-- Brand Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Request Task page stylesheet -->
+  <link rel="stylesheet" href="../css/user/request-task.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="home.html" aria-label="TaskNOVA home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+        </a>
+
+        <div class="nav-actions">
+          <a class="icon-btn" href="alerts.html" aria-label="Alerts">
+            <i class="bx bx-bell"></i>
+            <span class="alert-dot" id="alertDot"></span>
+          </a>
+
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">T</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">&nbsp;</span>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAccount">
+        <button type="button" class="menu-group-label">
+          Account <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
+              <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
+              <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupEarn">
+        <button type="button" class="menu-group-label">
+          Earn <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="earn.html"><i class="bx bx-task"></i> Earn / Tasks</a>
+              <a href="track-work.html"><i class="bx bx-check-double"></i> Track Work Done</a>
+              <a href="request-task.html"><i class="bx bx-message-square-add"></i> Request Task</a>
+              <a href="refer.html"><i class="bx bx-gift"></i> Refer a Friend</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertise">
+        <button type="button" class="menu-group-label">
+          Advertise <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="post-task.html"><i class="bx bx-plus-circle"></i> Post Task</a>
+              <a href="post-advertisement.html"><i class="bx bx-megaphone"></i> Post Advertisement</a>
+              <a href="track-posted-tasks.html"><i class="bx bx-list-check"></i> Track Posted Tasks</a>
+              <a href="track-posted-ads.html"><i class="bx bx-bar-chart-alt-2"></i> Track Posted Ads</a>
+              <a href="advertisements.html"><i class="bx bx-megaphone-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupSupport">
+        <button type="button" class="menu-group-label">
+          Support <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="alerts.html"><i class="bx bx-bell"></i> Alerts</a>
+              <a href="support.html"><i class="bx bx-support"></i> Support</a>
+              <a href="help.html"><i class="bx bx-help-circle"></i> Help</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Request a Task Type</h1>
+        <p>Want a task that's not in our catalogue yet? Tell us what you need and our admin will review it.</p>
+      </div>
+
+      <!-- Top advertisement (default banner shown when no paid ad is active) -->
+      <div class="ad-banner reveal delay-1" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+      <!-- ================= REQUEST TASK FORM ================= -->
+      <section class="request-form-section">
+        <form id="requestTaskForm" class="request-form" novalidate>
+
+          <div class="panel-msg" id="formMsg"></div>
+
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">What do you want done?</h2>
+            <div class="w-field">
+              <label for="whatWanted">Describe the task you want</label>
+              <textarea id="whatWanted" rows="4" placeholder="e.g. Get people to test my new mobile game and report bugs…" required></textarea>
+            </div>
+          </div>
+
+          <div class="form-card reveal delay-1">
+            <h2 class="fc-title">Instructions</h2>
+            <div class="w-field">
+              <label for="requestInstructions">How should workers go about it?</label>
+              <textarea id="requestInstructions" rows="4" placeholder="Step-by-step, exactly what a worker should do…" required></textarea>
+            </div>
+          </div>
+
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">Platform</h2>
+            <div class="w-field">
+              <label for="requestPlatform">Where does this task happen?</label>
+              <input type="text" id="requestPlatform" placeholder="e.g. WhatsApp, Instagram, our website, an app…" required>
+            </div>
+          </div>
+
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">Workers</h2>
+            <div class="w-field">
+              <label for="requestWorkers">Number of workers you'd want</label>
+              <input type="number" id="requestWorkers" min="1" step="1" placeholder="e.g. 20" required>
+            </div>
+          </div>
+
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title">Desired result</h2>
+            <div class="w-field">
+              <label for="desiredResult">What should this task achieve?</label>
+              <textarea id="desiredResult" rows="3" placeholder="e.g. 20 genuine bug reports with screenshots" required></textarea>
+            </div>
+          </div>
+
+          <!-- Proof requirements — repeatable list -->
+          <div class="form-card reveal delay-3">
+            <h2 class="fc-title">Proof requirements</h2>
+            <p class="wp-hint">What should a worker submit to prove they completed it?</p>
+
+            <ul class="proof-chip-list" id="proofChipList"></ul>
+
+            <div class="proof-add-row">
+              <input type="text" id="proofInput" placeholder="e.g. Screenshot of the completed action" maxlength="80">
+              <button type="button" class="proof-add-btn" id="proofAddBtn">
+                <i class="bx bx-plus"></i> Add
+              </button>
+            </div>
+          </div>
+
+          <div class="info-note">
+            <i class="bx bx-info-circle"></i>
+            <span>This is a request, not a paid task post — nothing is charged here. Our admin reviews it and, if approved, may add it to the catalogue or reach out with next steps.</span>
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="requestSubmit">
+            <span class="btn-spinner"></span>
+            <span class="btn-label">Submit Request</span>
+            <i class="bx bx-send"></i>
+          </button>
+
+        </form>
+      </section>
+
+      <!-- Bottom advertisement -->
+      <div class="ad-banner bottom-banner reveal" data-default-ad role="button" tabindex="0" aria-label="Advertise your business here">
+        <div class="ad-icon"><i class="bx bx-megaphone"></i></div>
+        <div class="ad-copy">
+          <strong>Advertise Your Business Here</strong>
+          <span>Reach TaskNOVA's audience for an affordable price.</span>
+        </div>
+        <span class="ad-tag">Ad</span>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Floating advertisement (draggable) -->
+  <div class="floating-ad" id="floatingAd" data-default-ad>
+    <span class="fa-close" id="floatingAdClose"><i class="bx bx-x"></i></span>
+    <div class="fa-body">
+      <i class="bx bx-megaphone"></i>
+      Advertise Here
+    </div>
+  </div>
+
+  <!-- Floating support (draggable, sits beneath the floating ad by default).
+       Opens the Tawk.to chat widget — Skred is now used only for ad banner inquiries. -->
+  <a class="support-fab" id="supportFab"
+     href="#"
+     aria-label="TaskNOVA Support"
+     title="TaskNOVA Support">
+    <img src="../assets/images/icon_logo.png" alt="">
+  </a>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="home.html">
+      <i class="bx bxs-home"></i> Home
+    </a>
+    <a class="bn-item post-item" href="#" id="postModalTrigger" aria-label="Create a post" aria-haspopup="dialog" aria-controls="tnPostModal">
+      <span class="bn-post-circle"><i class="bx bx-plus"></i></span>
+      Post
+    </a>
+    <a class="bn-item" href="earn.html">
+      <i class="bx bx-task"></i> Earn
+    </a>
+    <a class="bn-item" href="advertisements.html">
+      <i class="bx bx-grid-alt"></i> Ads
+    </a>
+    <a class="bn-item" href="transactions.html">
+      <i class="bx bx-receipt"></i> Trans.
+    </a>
+  </nav>
+
+  <!-- Request Task page logic -->
+  <script type="module" src="../js/user/request-task.js"></script>
+
+  <!-- Start of Tawk.to Script -->
+  <script type="text/javascript">
+  var Tawk_API=Tawk_API||{}, Tawk_LoadStart=new Date();
+  (function(){
+  var s1=document.createElement("script"),s0=document.getElementsByTagName("script")[0];
+  s1.async=true;
+  s1.src='https://embed.tawk.to/6a81e96a7b55151d452bf3f6/1k05nfi74';
+  s1.charset='UTF-8';
+  s1.setAttribute('crossorigin','*');
+  s0.parentNode.insertBefore(s1,s0);
+  })();
+  </script>
+  <!-- End of Tawk.to Script -->
+
+  <script>
+  (function(){
+    "use strict";
+
+    const trigger=document.getElementById("postModalTrigger");
+    if(!trigger)return;
+
+    trigger.addEventListener("click",async function(e){
+      e.preventDefault();
+
+      if(!document.getElementById("tnPostModal")){
+        try{
+          const response=await fetch("components/post-modal.html",{cache:"no-cache"});
+          if(!response.ok)throw new Error("Failed to load post-modal.html: "+response.status);
+
+          const html=await response.text();
+          const wrapper=document.createElement("div");
+          wrapper.innerHTML=html;
+
+          const scripts=[...wrapper.querySelectorAll("script")];
+          scripts.forEach(s=>s.remove());
+          document.body.appendChild(wrapper);
+
+          for(const oldScript of scripts){
+            const newScript=document.createElement("script");
+            if(oldScript.src)newScript.src=oldScript.src;
+            else newScript.textContent=oldScript.textContent;
+            document.body.appendChild(newScript);
+          }
+        }catch(error){
+          console.error("TaskNOVA Post Modal failed to load:",error);
+          return;
+        }
+      }
+
+      if(window.TaskNovaPostModal)window.TaskNovaPostModal.open();
+      else document.dispatchEvent(new CustomEvent("tasknova:open-post-modal"));
+    });
+  })();
+  </script>
+</body>
+</html>
