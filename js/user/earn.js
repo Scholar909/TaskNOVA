@@ -831,6 +831,9 @@ function subscribeNextPage() {
         lastVisibleDoc = snap.docs[snap.docs.length - 1];
         hasMore = snap.docs.length === PAGE_SIZE;
       }
+
+      render();
+      return;
     }
 
     let structuralChange = false;
