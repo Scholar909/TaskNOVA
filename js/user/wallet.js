@@ -671,8 +671,8 @@ const resolvedNameValue = document.getElementById("resolvedNameValue");
 const withdrawSubmit = document.getElementById("withdrawSubmit");
 const withdrawMsg = document.getElementById("withdrawMsg");
 
-const WITHDRAWAL_FEE_RATE = 0.10;
-const WITHDRAWAL_MIN = 1000;
+const WITHDRAWAL_FEE_RATE = 0.05;
+const WITHDRAWAL_MIN = 500;
 
 let resolvedAccountName = null;
 let accountCheckTimer = null;
@@ -935,7 +935,7 @@ swapForm.addEventListener("submit", async (e) => {
 
    3. requestWithdrawal(amount, bank_code, bank_name, account_number, account_name)
       - Re-check the caller's Earned Balance server-side (never trust the client).
-      - Enforce minimum ₦1,000 and the 10% fee.
+      - Enforce minimum ₦500 and the 5% fee.
       - Deduct wallet.earned in a Firestore transaction, write a
         "transactions" doc (type: "withdrawal", direction: "debit", status: "pending").
       - Call Paystack Transfer Recipient + Transfer endpoints to disburse

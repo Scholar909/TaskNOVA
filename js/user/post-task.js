@@ -721,6 +721,8 @@ function buildTaskData(status) {
     workerPayout,
     platformFee,
     workersRequired: workers,
+    slotsFilled: 0,
+    full: false,
     location: taskLocationSelect.value,
     urgent,
     urgentFee,
@@ -929,4 +931,20 @@ onAuthStateChanged(auth, (user) => {
      worker above the floor — the extra goes straight to the
      worker's payout, matching the pricing model where TaskNOVA
      doesn't need to recalculate its own fee when prices move.
+
+   - slotsFilled/full: a task now starts at slotsFilled: 0 and
+     full: false. The Earn feed's live query filters on
+     where("full", "==", false) so a task vanishes from every
+     worker's screen the instant it's full, and reappears
+     automatically if a submission is later declined. That means
+     slotsFilled/full must be kept in sync wherever submissions are
+     handled (not built yet):
+       - On submit: increment slotsFilled by 1 in the same
+         transaction that creates the submission doc, and set
+         full = (slotsFilled >= workersRequired).
+       - On decline: decrement slotsFilled by 1 and set
+         full = false (freeing the slot back up for someone else).
+       - On approval: slotsFilled stays as-is (it was already
+         counted at submission time) — approval just marks that
+         submission doc approved and releases the worker's payout.
    =========================================================== */
