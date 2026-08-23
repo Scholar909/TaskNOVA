@@ -1,1 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA Admin — sign in to manage the platform." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Admin Login — TaskNOVA</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
 
+  <!-- Boxicons -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+  <!-- Basic Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+  <!-- Filled Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+  <!-- Brand Icons -->
+  <link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* =========================================================
+       TASKNOVA ADMIN LOGIN — single-file (HTML + CSS + JS)
+       Tokens copied 1:1 from the main site's design system.
+       ========================================================= */
+
+    :root {
+      --bg: #f7faff;
+      --bg-soft: #eef5ff;
+      --surface: rgba(255,255,255,.78);
+      --surface-solid: #ffffff;
+      --surface-2: #f2f7ff;
+      --text: #07111f;
+      --text-soft: #53627a;
+      --line: rgba(8, 38, 80, .10);
+      --primary: #086cff;
+      --primary-2: #13c8e8;
+      --primary-dark: #0049bd;
+      --danger: #ff4d5e;
+      --success: #17c992;
+      --warning: #ffb020;
+      --shadow: 0 22px 70px rgba(20, 70, 130, .13);
+      --shadow-soft: 0 12px 40px rgba(20, 70, 130, .09);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 17px;
+      --max: 1180px;
+      --ease: cubic-bezier(.22, 1, .36, 1);
+    }
+
+    body.dark {
+      --bg: #03070e;
+      --bg-soft: #07111f;
+      --surface: rgba(9, 19, 34, .72);
+      --surface-solid: #091321;
+      --surface-2: #0c192b;
+      --text: #f5f9ff;
+      --text-soft: #9aaac0;
+      --line: rgba(153, 190, 230, .12);
+      --primary: #1680ff;
+      --primary-2: #19d7f1;
+      --primary-dark: #61b0ff;
+      --danger: #ff6b78;
+      --success: #2fe0a6;
+      --warning: #ffc247;
+      --shadow: 0 26px 90px rgba(0, 0, 0, .42);
+      --shadow-soft: 0 15px 50px rgba(0, 0, 0, .30);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; min-width: 0; }
+    html { scroll-behavior: smooth; }
+    html, body { width: 100%; max-width: 100%; overflow-x: clip; }
+
+    body {
+      position: relative;
+      min-width: 320px;
+      font-family: "Poppins", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 12% 8%, rgba(0, 116, 255, .09), transparent 28rem),
+        radial-gradient(circle at 88% 18%, rgba(0, 212, 240, .08), transparent 26rem),
+        var(--bg);
+      line-height: 1.65;
+      min-height: 100svh;
+      transition: background .45s var(--ease), color .45s var(--ease);
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+    img { display: block; max-width: 100%; }
+
+    .container {
+      width: 100%;
+      max-width: var(--max);
+      margin-inline: auto;
+      padding-inline: 18px;
+    }
+
+    /* ---------- HEADER ---------- */
+    .site-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      padding: 16px 0;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 62px;
+      padding: 8px 10px 8px 18px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: color-mix(in srgb, var(--surface-solid) 78%, transparent);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+      box-shadow: 0 10px 45px rgba(0,0,0,.06);
+    }
+
+    .brand { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+    .brand img { width: 130px; height: auto; object-fit: contain; }
+
+    .admin-tag {
+      flex-shrink: 0;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #0067ff, #13cde5);
+      color: #fff;
+      font-size: .62rem;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .icon-btn {
+      width: 42px; height: 42px;
+      display: grid; place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      color: var(--text);
+      background: var(--surface);
+      transition: transform .25s var(--ease), border-color .25s ease;
+      flex-shrink: 0;
+    }
+
+    .icon-btn:hover { transform: translateY(-2px); border-color: rgba(22,128,255,.35); }
+    .icon-btn i { font-size: 1.25rem; }
+
+    /* ---------- MAIN / AUTH CARD ---------- */
+    .auth-main {
+      position: relative;
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 128px 18px 60px;
+    }
+
+    .auth-main::before {
+      content: "";
+      position: absolute;
+      width: 560px; height: 560px;
+      left: 50%; top: 40%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0,128,255,.13), transparent 67%);
+      filter: blur(8px);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 400px;
+      padding: 34px 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: var(--surface);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: var(--shadow);
+    }
+
+    .auth-icon {
+      width: 54px; height: 54px;
+      margin: 0 auto 16px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #0067ff, #13cde5);
+      color: #fff;
+      font-size: 1.5rem;
+      box-shadow: 0 14px 30px rgba(0, 115, 255, .3);
+    }
+
+    .auth-card h1 {
+      text-align: center;
+      font-size: 1.3rem;
+      letter-spacing: -.01em;
+    }
+
+    .auth-card p.sub {
+      text-align: center;
+      margin-top: 6px;
+      margin-bottom: 24px;
+      color: var(--text-soft);
+      font-size: .82rem;
+    }
+
+    .field { display: grid; gap: 7px; margin-bottom: 16px; }
+
+    .field label {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--text-soft);
+    }
+
+    .field-input-wrap { position: relative; }
+
+    .field input {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface-2);
+      color: var(--text);
+      font: inherit;
+      font-size: .9rem;
+      transition: border-color .25s ease, box-shadow .25s ease, background .25s ease;
+    }
+
+    .field input::placeholder { color: var(--text-soft); opacity: .7; }
+
+    .field input:focus {
+      outline: none;
+      border-color: rgba(22,128,255,.5);
+      box-shadow: 0 0 0 4px rgba(22,128,255,.12);
+      background: var(--surface-solid);
+    }
+
+    .field-input-wrap.has-toggle input { padding-right: 44px; }
+
+    .field-toggle {
+      position: absolute;
+      right: 6px; top: 50%;
+      transform: translateY(-50%);
+      width: 36px; height: 36px;
+      display: grid; place-items: center;
+      border: none;
+      background: transparent;
+      color: var(--text-soft);
+      border-radius: 9px;
+      font-size: 1.05rem;
+      transition: color .2s ease, background .2s ease;
+    }
+
+    .field-toggle:hover { color: var(--text); background: var(--surface); }
+
+    .btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      min-height: 50px;
+      width: 100%;
+      padding: 0 19px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      font-size: .93rem;
+      font-weight: 600;
+      overflow: hidden;
+      isolation: isolate;
+      transition: transform .3s var(--ease), box-shadow .3s var(--ease), opacity .3s ease;
+    }
+
+    .btn::after {
+      content: "";
+      position: absolute;
+      inset: -2px;
+      z-index: -1;
+      opacity: 0;
+      background: linear-gradient(110deg, transparent 25%, rgba(255,255,255,.35), transparent 70%);
+      transform: translateX(-120%);
+      transition: transform .6s ease, opacity .2s ease;
+    }
+
+    .btn:hover::after { opacity: 1; transform: translateX(120%); }
+    .btn:hover { transform: translateY(-3px); }
+    .btn:disabled { opacity: .62; cursor: not-allowed; transform: none; }
+    .btn:disabled:hover { transform: none; }
+    .btn:disabled::after { opacity: 0; }
+
+    .btn-primary {
+      color: #fff;
+      background: linear-gradient(135deg, #0067ff, #08a9ee 70%, #13d5e7);
+      box-shadow: 0 12px 30px rgba(0, 115, 255, .25);
+    }
+
+    .btn-primary:hover { box-shadow: 0 18px 42px rgba(0, 115, 255, .34); }
+
+    .btn-spinner {
+      width: 17px; height: 17px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      animation: spin .7s linear infinite;
+      display: none;
+      flex-shrink: 0;
+    }
+
+    .btn.loading .btn-spinner { display: inline-block; }
+    .btn.loading .btn-label { opacity: .85; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .panel-msg {
+      display: none;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 11px 13px;
+      margin-bottom: 16px;
+      border-radius: 12px;
+      font-size: .8rem;
+      line-height: 1.5;
+      border: 1px solid transparent;
+    }
+
+    .panel-msg.show { display: flex; }
+
+    .panel-msg.error {
+      color: var(--danger);
+      background: color-mix(in srgb, var(--danger) 12%, transparent);
+      border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+    }
+
+    .panel-msg.success {
+      color: var(--success);
+      background: color-mix(in srgb, var(--success) 14%, transparent);
+      border-color: color-mix(in srgb, var(--success) 32%, transparent);
+    }
+
+    .panel-msg i { font-size: 1rem; margin-top: 1px; flex-shrink: 0; }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 18px;
+      font-size: .78rem;
+      color: var(--text-soft);
+      font-weight: 500;
+    }
+
+    .back-link:hover { color: var(--text); }
+
+    /* ---------- REVEAL ---------- */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .auth-card { padding: 28px 20px; border-radius: 26px; }
+      .brand img { width: 112px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="../index.html" aria-label="TaskNOVA home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="admin-tag">Admin</span>
+        </a>
+
+        <button class="icon-btn" id="themeToggle" type="button" aria-label="Switch theme">
+          <i class="bx bx-moon" id="themeIcon"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="auth-main">
+    <div class="auth-card reveal">
+      <div class="auth-icon"><i class="bx bxs-shield-alt-2"></i></div>
+      <h1>Admin Login</h1>
+      <p class="sub">Sign in with your TaskNOVA admin account.</p>
+
+      <form id="adminLoginForm" novalidate>
+        <div class="panel-msg" id="loginMsg"></div>
+
+        <div class="field">
+          <label for="adminEmail">Email</label>
+          <div class="field-input-wrap">
+            <input type="email" id="adminEmail" name="email" placeholder="you@example.com" autocomplete="email" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="adminPassword">Password</label>
+          <div class="field-input-wrap has-toggle">
+            <input type="password" id="adminPassword" name="password" placeholder="Enter your password" autocomplete="current-password" required minlength="6">
+            <button type="button" class="field-toggle" id="pwToggle" aria-label="Show password">
+              <i class="bx bx-hide"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="loginSubmit">
+          <span class="btn-spinner"></span>
+          <span class="btn-label">Sign In</span>
+          <i class="bx bx-log-in-circle"></i>
+        </button>
+      </form>
+
+      <a class="back-link" href="../index.html">
+        <i class="bx bx-left-arrow-alt"></i> Back to TaskNOVA
+      </a>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      getDoc
+    } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
+      authDomain: "tasknova-240eb.firebaseapp.com",
+      projectId: "tasknova-240eb",
+      storageBucket: "tasknova-240eb.firebasestorage.app",
+      messagingSenderId: "303980894317",
+      appId: "1:303980894317:web:7a4be9b7face44a22bc764"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    /* ---------------------------------------------------------
+       THEME (same key as the rest of the site)
+       --------------------------------------------------------- */
+    const body = document.body;
+    const themeToggle = document.getElementById("themeToggle");
+    const themeIcon = document.getElementById("themeIcon");
+    const themeImages = document.querySelectorAll("[data-light][data-dark]");
+
+    function setTheme(theme, save = true) {
+      const isDark = theme === "dark";
+      body.classList.toggle("dark", isDark);
+      themeImages.forEach((img) => { img.src = isDark ? img.dataset.dark : img.dataset.light; });
+      themeIcon.className = isDark ? "bx bx-sun" : "bx bx-moon";
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", isDark ? "#03070e" : "#f7faff");
+      if (save) localStorage.setItem("tasknova-theme", theme);
+    }
+
+    const savedTheme = localStorage.getItem("tasknova-theme");
+    if (savedTheme === "dark" || savedTheme === "light") {
+      setTheme(savedTheme, false);
+    } else {
+      setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light", false);
+    }
+
+    themeToggle.addEventListener("click", () => {
+      setTheme(body.classList.contains("dark") ? "light" : "dark");
+    });
+
+    /* ---------------------------------------------------------
+       REVEAL
+       --------------------------------------------------------- */
+    document.querySelectorAll(".reveal").forEach((el) => el.classList.add("visible"));
+
+    /* ---------------------------------------------------------
+       PASSWORD SHOW/HIDE
+       --------------------------------------------------------- */
+    const pwInput = document.getElementById("adminPassword");
+    const pwToggle = document.getElementById("pwToggle");
+    pwToggle.addEventListener("click", () => {
+      const isPw = pwInput.type === "password";
+      pwInput.type = isPw ? "text" : "password";
+      pwToggle.innerHTML = isPw ? '<i class="bx bx-show"></i>' : '<i class="bx bx-hide"></i>';
+    });
+
+    /* ---------------------------------------------------------
+       HELPERS
+       --------------------------------------------------------- */
+    const loginMsg = document.getElementById("loginMsg");
+    const loginSubmit = document.getElementById("loginSubmit");
+    const adminLoginForm = document.getElementById("adminLoginForm");
+
+    function showMsg(type, text) {
+      loginMsg.className = "panel-msg show " + type;
+      const icon = type === "error" ? "bx-error-circle" : "bx-check-circle";
+      loginMsg.innerHTML = `<i class="bx ${icon}"></i><span>${text}</span>`;
+    }
+    function clearMsg() {
+      loginMsg.className = "panel-msg";
+      loginMsg.innerHTML = "";
+    }
+    function setLoading(isLoading) {
+      loginSubmit.classList.toggle("loading", isLoading);
+      loginSubmit.disabled = isLoading;
+    }
+
+    function friendlyError(err) {
+      const code = err && err.code ? err.code : "";
+      switch (code) {
+        case "auth/invalid-email": return "That email address doesn't look right.";
+        case "auth/user-not-found":
+        case "auth/invalid-credential":
+        case "auth/wrong-password": return "Incorrect email or password.";
+        case "auth/too-many-requests": return "Too many attempts. Please wait a moment and try again.";
+        case "auth/network-request-failed": return "Network error. Check your connection and try again.";
+        default: return (err && err.message) ? err.message.replace("Firebase: ", "") : "Something went wrong. Please try again.";
+      }
+    }
+
+    /* ---------------------------------------------------------
+       ADMIN CHECK — the same users/{uid} doc everyone has, just
+       with an extra `isAdmin: true` field set manually in the
+       Firebase console for whichever accounts should have access.
+       --------------------------------------------------------- */
+    async function verifyAdminAndRedirect(user) {
+      const snap = await getDoc(doc(db, "users", user.uid));
+      const isAdmin = snap.exists() && snap.data().isAdmin === true;
+
+      if (!isAdmin) {
+        await signOut(auth);
+        showMsg("error", "This account does not have admin access.");
+        setLoading(false);
+        return;
+      }
+
+      window.location.href = "dashboard.html";
+    }
+
+    // If already signed in as an admin, skip straight to the dashboard.
+    let hasAutoChecked = false;
+    onAuthStateChanged(auth, (user) => {
+      if (hasAutoChecked) return;
+      hasAutoChecked = true;
+      if (user) verifyAdminAndRedirect(user);
+    });
+
+    /* ---------------------------------------------------------
+       LOGIN SUBMIT
+       --------------------------------------------------------- */
+    adminLoginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearMsg();
+
+      const email = document.getElementById("adminEmail").value.trim();
+      const password = pwInput.value;
+
+      if (!email || !password) {
+        showMsg("error", "Please enter your email and password.");
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        await verifyAdminAndRedirect(cred.user);
+      } catch (err) {
+        showMsg("error", friendlyError(err));
+        setLoading(false);
+      }
+    });
+  </script>
+</body>
+</html>
