@@ -1024,3 +1024,200 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
   .floating-ad { width: 80px; height: 80px; right: 14px; }
   .support-fab { right: 14px; width: 50px; height: 50px; }
 }
+
+/* =========================================================
+   BANNER MEDIA — BANNER PACKAGE ONLY
+   ========================================================= */
+
+.banner-media-info {
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+  color: var(--text-soft);
+  font-size: .76rem;
+  line-height: 1.55;
+}
+
+.banner-media-info-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  margin-bottom: 9px;
+}
+
+.banner-media-info-head i {
+  color: var(--primary);
+  font-size: 1.15rem;
+}
+
+.banner-media-specs {
+  display: grid;
+  gap: 5px;
+}
+
+.banner-spec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.banner-spec-row span {
+  color: var(--text-soft);
+}
+
+.banner-spec-row strong {
+  color: var(--text);
+  text-align: right;
+  font-size: .73rem;
+}
+
+.banner-media-info p {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+
+/* Banner upload box */
+.banner-media-upload {
+  position: relative;
+  max-width: 100%;
+  aspect-ratio: 3 / 1;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--surface-2);
+  transition: border-color .25s ease, background .25s ease;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.banner-media-upload:hover {
+  border-color: rgba(22,128,255,.4);
+}
+
+.banner-media-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 16px;
+  color: var(--text-soft);
+  text-align: center;
+  font-size: .76rem;
+}
+
+.banner-media-empty i {
+  color: var(--primary);
+  font-size: 1.8rem;
+}
+
+.banner-media-empty strong {
+  color: var(--text);
+  font-size: .82rem;
+}
+
+.banner-media-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.banner-media-preview img,
+.banner-media-preview video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.banner-media-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,.62);
+  color: #fff;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.banner-media-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.banner-media-progress span {
+  font-size: .73rem;
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+/* Requirement checks */
+.banner-requirements {
+  display: grid;
+  gap: 7px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.banner-requirement {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: .77rem;
+}
+
+.banner-requirement span {
+  color: var(--text-soft);
+}
+
+.banner-requirement strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .76rem;
+}
+
+.banner-requirement strong.valid {
+  color: var(--success);
+}
+
+.banner-requirement strong.invalid {
+  color: var(--danger);
+}
+
+.banner-requirement strong.pending {
+  color: var(--text-soft);
+}
+
+.banner-requirement strong.valid::before {
+  content: "✓";
+}
+
+.banner-requirement strong.invalid::before {
+  content: "×";
+}
+
+/* Don't show video-only checks for image creatives */
+.banner-requirement.hidden {
+  display: none;
+}
