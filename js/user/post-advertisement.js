@@ -1508,7 +1508,7 @@ bannerMediaInput.addEventListener(
     setRequirement(
       reqSize,
       true,
-      `${formatFileSize(file.size)} ✓`
+      `${formatFileSize(file.size)}`
     );
 
     /* -------------------------------------------------------
@@ -1561,7 +1561,7 @@ bannerMediaInput.addEventListener(
             reqRatio,
             ratioValid,
             ratioValid
-              ? `✓`
+              ? ``
               : `must be 3:1`
           );
 
@@ -1688,7 +1688,7 @@ bannerMediaInput.addEventListener(
           reqRatio,
           ratioValid,
           ratioValid
-            ? `✓`
+            ? ``
             : `must be 3:1`
         );
 
@@ -1697,7 +1697,7 @@ bannerMediaInput.addEventListener(
           reqDuration,
           durationValid,
           durationValid
-            ? `✓`
+            ? ``
             : `max 15s`
         );
 
@@ -1706,8 +1706,8 @@ bannerMediaInput.addEventListener(
           reqResolution,
           resolutionValid,
           resolutionValid
-            ? `✓`
-            : `max 720px height`
+            ? ``
+            : `max 720px`
         );
 
 
@@ -1720,7 +1720,7 @@ bannerMediaInput.addEventListener(
         if (!bannerMediaValid) {
           showMsg(
             "error",
-            "This video does not meet all banner requirements."
+            "This video does not meet all banner requirements. Video must use a horizontal 3:1 ratio, such as 2160 × 720 px."
           );
         }
       };
