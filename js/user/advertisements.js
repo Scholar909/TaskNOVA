@@ -298,6 +298,7 @@ let lastVisibleDoc = null;
 let hasMore = true;
 let isLoading = false;
 let openAdId = null;
+let adSearchTerm = "";
 
 /* ---------------------------------------------------------
    DOM REFS
@@ -306,14 +307,110 @@ const adList = document.getElementById("adList");
 const loadMoreWrap = document.getElementById("loadMoreWrap");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 
+const adSearchInput = document.getElementById("adSearchInput");
+const adSearchClear = document.getElementById("adSearchClear");
+
+/* ---------------------------------------------------------
+   AD SEARCH
+   --------------------------------------------------------- */
+function updateSearchClearButton() {
+  adSearchClear?.classList.toggle(
+    "show",
+    adSearchInput?.value.trim().length > 0
+  );
+}
+
+adSearchInput?.addEventListener("input", () => {
+  adSearchTerm = adSearchInput.value;
+  updateSearchClearButton();
+
+  // Close any expanded advertisement when the result set changes.
+  openAdId = null;
+
+  render();
+});
+
+adSearchClear?.addEventListener("click", () => {
+  if (!adSearchInput) return;
+
+  adSearchInput.value = "";
+  adSearchTerm = "";
+  updateSearchClearButton();
+
+  openAdId = null;
+  render();
+
+  adSearchInput.focus();
+});
+
 /* ---------------------------------------------------------
    RENDER
    --------------------------------------------------------- */
 function sortedAds() {
-  return Array.from(adDocsMap.values()).sort((a, b) => {
+  const ads = Array.from(adDocsMap.values()).sort((a, b) => {
     const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
     const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
     return bt - at;
+  });
+
+  const search = adSearchTerm.trim().toLowerCase();
+
+  if (!search) return ads;
+
+  // Price range search: 1500:3000
+  const rangeMatch = search.match(
+    /^([\d,\s]+)\s*:\s*([\d,\s]+)$/
+  );
+
+  if (rangeMatch) {
+    const minPrice = Number(rangeMatch[1].replace(/[,\s]/g, ""));
+    const maxPrice = Number(rangeMatch[2].replace(/[,\s]/g, ""));
+
+    if (
+      Number.isFinite(minPrice) &&
+      Number.isFinite(maxPrice)
+    ) {
+      const low = Math.min(minPrice, maxPrice);
+      const high = Math.max(minPrice, maxPrice);
+
+      return ads.filter((ad) => {
+        const price = Number(ad.price);
+
+        return Number.isFinite(price) &&
+          price >= low &&
+          price <= high;
+      });
+    }
+  }
+
+  /*
+   * Normal search:
+   * Every typed word must appear somewhere in the advertisement's
+   * searchable text. This allows searches such as:
+   *
+   * phone
+   * blue phone
+   * laptop 50000
+   * student shoes
+   */
+  const terms = search.split(/\s+/).filter(Boolean);
+
+  return ads.filter((ad) => {
+    const searchableText = Object.entries(ad)
+      .filter(([key, value]) => {
+        return (
+          key !== "createdAt" &&
+          key !== "updatedAt" &&
+          value !== null &&
+          value !== undefined &&
+          typeof value !== "object"
+        );
+      })
+      .map(([, value]) => String(value))
+      .join(" ")
+      .toLowerCase();
+
+    return terms.every((term) => searchableText.includes(term));
   });
 }
 
@@ -321,15 +418,27 @@ function render() {
   const ads = sortedAds();
 
   if (!ads.length) {
-    adList.innerHTML = `<div class="ad-empty"><i class="bx bx-megaphone-alt"></i>No advertisements right now — check back soon.</div>`;
-    loadMoreWrap.style.display = "none";
+    const hasSearch = adSearchTerm.trim().length > 0;
+
+    adList.innerHTML = `
+      <div class="ad-empty">
+        <i class="bx ${hasSearch ? "bx-search-alt" : "bx-megaphone-alt"}"></i>
+        ${hasSearch
+          ? "No advertisements match your search."
+          : "No advertisements right now — check back soon."}
+      </div>
+    `;
+
+    loadMoreWrap.style.display = hasSearch && hasMore ? "flex" : "none";
     return;
   }
 
   adList.innerHTML = ads.map(renderAdItem).join("");
 
   adList.querySelectorAll(".ad-row").forEach((row) => {
-    row.addEventListener("click", () => toggleAd(row.closest(".ad-item").dataset.id));
+    row.addEventListener("click", () => {
+      toggleAd(row.closest(".ad-item").dataset.id);
+    });
   });
 
   loadMoreWrap.style.display = hasMore ? "flex" : "none";
