@@ -244,28 +244,201 @@
             </div>
           </div>
 
-          <!-- Image -->
-          <div class="form-card reveal delay-2">
-            <h2 class="fc-title">3. Ad image <span class="optional-tag">optional</span></h2>
-            <div class="image-upload" id="imageUploadZone">
-              <input type="file" id="adImageInput" accept="image/*" hidden>
-              <div class="image-upload-empty" id="imageUploadEmpty">
-                <i class="bx bx-image-add"></i>
-                <span>Tap to add an image</span>
+          <!-- Media -->
+          <div class="form-card reveal delay-2" id="adMediaCard">
+            <h2 class="fc-title" id="mediaCardTitle">
+              3. Ad image <span class="optional-tag">optional</span>
+            </h2>
+          
+            <!-- Normal advertisement media -->
+            <div id="normalMediaContent">
+              <div class="image-upload" id="imageUploadZone">
+                <input type="file" id="adImageInput" accept="image/*" hidden>
+          
+                <div class="image-upload-empty" id="imageUploadEmpty">
+                  <i class="bx bx-image-add"></i>
+                  <span>Tap to add an image</span>
+                </div>
+          
+                <img
+                  id="imagePreview"
+                  class="image-preview"
+                  style="display:none;"
+                  alt="Ad preview"
+                >
+          
+                <div
+                  class="image-upload-progress"
+                  id="imageUploadProgress"
+                  style="display:none;"
+                >
+                  <div class="iup-track">
+                    <div class="iup-fill" id="imageUploadFill"></div>
+                  </div>
+                  <span id="imageUploadPercent">0%</span>
+                </div>
+          
+                <button
+                  type="button"
+                  class="image-remove-btn"
+                  id="imageRemoveBtn"
+                  style="display:none;"
+                  aria-label="Remove image"
+                >
+                  <i class="bx bx-x"></i>
+                </button>
               </div>
-              <img id="imagePreview" class="image-preview" style="display:none;" alt="Ad preview">
-              <div class="image-upload-progress" id="imageUploadProgress" style="display:none;">
-                <div class="iup-track"><div class="iup-fill" id="imageUploadFill"></div></div>
-                <span id="imageUploadPercent">0%</span>
+            </div>
+          
+            <!-- Banner-only media -->
+            <div id="bannerMediaContent" style="display:none;">
+          
+              <div class="banner-media-info">
+                <div class="banner-media-info-head">
+                  <i class="bx bx-info-circle"></i>
+                  <strong>Banner creative requirements</strong>
+                </div>
+          
+                <div class="banner-media-specs">
+                  <div class="banner-spec-row">
+                    <span>File type</span>
+                    <strong>Image or Video</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Image formats</span>
+                    <strong>WebP, JPG/JPEG or PNG</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Video formats</span>
+                    <strong>WebM or MP4</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Banner shape</span>
+                    <strong>Horizontal 3:1 ratio</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Maximum file size</span>
+                    <strong>2 MB</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Maximum video duration</span>
+                    <strong>15 seconds</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Maximum video resolution</span>
+                    <strong>720p</strong>
+                  </div>
+          
+                  <div class="banner-spec-row">
+                    <span>Recommended example</span>
+                    <strong>1500 × 500 px</strong>
+                  </div>
+                </div>
+          
+                <p>
+                  Your creative must be a horizontal rectangle matching the banner's
+                  shape. Smaller dimensions are allowed as long as the same 3:1 ratio
+                  is maintained. Images and videos are displayed inside the banner
+                  without stretching.
+                </p>
               </div>
-              <button type="button" class="image-remove-btn" id="imageRemoveBtn" style="display:none;" aria-label="Remove image">
-                <i class="bx bx-x"></i>
-              </button>
+          
+              <div class="banner-media-upload" id="bannerMediaUploadZone">
+                <input
+                  type="file"
+                  id="bannerMediaInput"
+                  accept="image/webp,image/jpeg, image/jpg, image/png,video/webm,video/mp4"
+                  hidden
+                >
+          
+                <div class="banner-media-empty" id="bannerMediaEmpty">
+                  <i class="bx bx-cloud-upload"></i>
+                  <strong>Upload banner image or video</strong>
+                  <span>Tap here to choose your creative</span>
+                </div>
+          
+                <div
+                  class="banner-media-preview"
+                  id="bannerMediaPreview"
+                  style="display:none;"
+                >
+                  <img
+                    id="bannerImagePreview"
+                    style="display:none;"
+                    alt="Banner preview"
+                  >
+          
+                  <video
+                    id="bannerVideoPreview"
+                    style="display:none;"
+                    muted
+                    playsinline
+                    preload="metadata"
+                  ></video>
+          
+                  <button
+                    type="button"
+                    class="banner-media-remove"
+                    id="bannerMediaRemove"
+                    aria-label="Remove banner media"
+                  >
+                    <i class="bx bx-x"></i>
+                  </button>
+                </div>
+              </div>
+          
+              <div
+                class="banner-media-progress"
+                id="bannerMediaProgress"
+                style="display:none;"
+              >
+                <div class="iup-track">
+                  <div class="iup-fill" id="bannerMediaFill"></div>
+                </div>
+                <span id="bannerMediaPercent">0%</span>
+              </div>
+          
+              <div
+                class="banner-requirements"
+                id="bannerRequirements"
+                style="display:none;"
+              >
+                <div class="banner-requirement">
+                  <span>File type</span>
+                  <strong id="reqType"></strong>
+                </div>
+          
+                <div class="banner-requirement">
+                  <span>File size ≤ 2 MB</span>
+                  <strong id="reqSize"></strong>
+                </div>
+          
+                <div class="banner-requirement">
+                  <span>3:1 banner ratio</span>
+                  <strong id="reqRatio"></strong>
+                </div>
+          
+                <div class="banner-requirement" id="reqDurationRow">
+                  <span>Video duration ≤ 15 seconds</span>
+                  <strong id="reqDuration"></strong>
+                </div>
+          
+                <div class="banner-requirement" id="reqResolutionRow">
+                  <span>Video resolution ≤ 720p</span>
+                  <strong id="reqResolution"></strong>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Description -->
-          <div class="form-card reveal delay-2">
+          <div class="form-card reveal delay-2" id="descriptionCard">
             <h2 class="fc-title">4. Description</h2>
             <div class="w-field">
               <label for="adDescription">What is this ad about?</label>
