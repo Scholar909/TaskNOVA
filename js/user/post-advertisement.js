@@ -497,7 +497,7 @@ const MAX_BANNER_SLOTS = 3;
    --------------------------------------------------------- */
 
 const BANNER_MAX_FILE_SIZE =
-  2 * 1024 * 1024;
+  5 * 1024 * 1024;
 
 const BANNER_MAX_VIDEO_DURATION = 15;
 
@@ -549,7 +549,7 @@ function formatFileSize(bytes) {
 
   return `${(
     bytes / (1024 * 1024)
-  ).toFixed(2)} MB`;
+  ).toFixed(5)} MB`;
 }
 
 
@@ -1472,7 +1472,7 @@ bannerMediaInput.addEventListener(
     ) {
       showMsg(
         "error",
-        "Banner media must be 2MB or smaller."
+        "Banner media must be 5MB or smaller."
       );
 
       bannerMediaInput.value = "";
@@ -1561,8 +1561,8 @@ bannerMediaInput.addEventListener(
             reqRatio,
             ratioValid,
             ratioValid
-              ? `${width} × ${height} ✓`
-              : `${width} × ${height} — must be 3:1`
+              ? `✓`
+              : `must be 3:1`
           );
 
 
@@ -1688,8 +1688,8 @@ bannerMediaInput.addEventListener(
           reqRatio,
           ratioValid,
           ratioValid
-            ? `${width} × ${height} ✓`
-            : `${width} × ${height} — must be 3:1`
+            ? `✓`
+            : `must be 3:1`
         );
 
 
@@ -1697,8 +1697,8 @@ bannerMediaInput.addEventListener(
           reqDuration,
           durationValid,
           durationValid
-            ? `${duration.toFixed(1)}s ✓`
-            : `${duration.toFixed(1)}s — max 15s`
+            ? `✓`
+            : `max 15s`
         );
 
 
@@ -1706,8 +1706,8 @@ bannerMediaInput.addEventListener(
           reqResolution,
           resolutionValid,
           resolutionValid
-            ? `${width} × ${height} ✓`
-            : `${width} × ${height} — max 720px height`
+            ? `✓`
+            : `max 720px height`
         );
 
 
@@ -2607,7 +2607,7 @@ onAuthStateChanged(
        • Image or video
        • Image: WebP/JPG/JPEG/PNG
        • Video: WebM/MP4
-       • Maximum file size: 2 MB
+       • Maximum file size: 5 MB
        • Horizontal 3:1 ratio
        • Video maximum duration: 15 seconds
        • Video maximum vertical resolution: 720px
