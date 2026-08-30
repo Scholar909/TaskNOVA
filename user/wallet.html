@@ -236,33 +236,150 @@
 
             <!-- ============ DEPOSIT PANEL ============ -->
             <form class="wallet-panel" id="depositForm" novalidate>
-              <p class="panel-intro">Deposit funds through Paystack. Successful payments are verified before your wallet is credited.</p>
+              <p class="panel-intro">Choose how you'd like to fund your wallet.</p>
 
               <div class="panel-msg" id="depositMsg"></div>
 
-              <div class="amount-field">
-                <label for="depositAmount">Amount</label>
-                <div class="amount-input-wrap">
-                  <span class="currency-prefix">₦</span>
-                  <input type="number" id="depositAmount" name="depositAmount" min="100" step="1" placeholder="0.00" inputmode="numeric" required>
-                </div>
-                <div class="amount-chips" id="depositChips">
-                  <button type="button" class="amount-chip" data-amount="500">₦500</button>
-                  <button type="button" class="amount-chip" data-amount="1000">₦1,000</button>
-                  <button type="button" class="amount-chip" data-amount="2000">₦2,000</button>
-                  <button type="button" class="amount-chip" data-amount="5000">₦5,000</button>
-                  <button type="button" class="amount-chip" data-amount="10000">₦10,000</button>
-                </div>
-                <span class="field-note" id="depositOutstandingNote"></span>
+              <div class="w-field">
+                <label for="depositMethod">Deposit method</label>
+                <select id="depositMethod">
+                  <option value="automatic">Instant Automatic — pay by card</option>
+                  <option value="virtual">Manual Automatic — bank transfer, auto-confirmed</option>
+                  <option value="manual">Manual Transfer — bank transfer, admin-approved</option>
+                </select>
+                <span class="field-note" id="depositMethodNote">Instant Automatic credits your wallet immediately after payment.</span>
               </div>
 
-              <button type="submit" class="btn btn-primary" id="depositSubmit">
-                <span class="btn-spinner"></span>
-                <span class="btn-label">Pay with Paystack</span>
-                <i class="bx bx-lock-alt"></i>
-              </button>
+              <!-- ===== METHOD 1: INSTANT AUTOMATIC (Paystack) — unchanged ===== -->
+              <div class="deposit-method-panel" id="methodAutomatic" data-method="automatic">
+                <div class="amount-field">
+                  <label for="depositAmount">Amount</label>
+                  <div class="amount-input-wrap">
+                    <span class="currency-prefix">₦</span>
+                    <input type="number" id="depositAmount" name="depositAmount" min="100" step="1" placeholder="0.00" inputmode="numeric">
+                  </div>
+                  <div class="amount-chips" id="depositChips">
+                    <button type="button" class="amount-chip" data-amount="500">₦500</button>
+                    <button type="button" class="amount-chip" data-amount="1000">₦1,000</button>
+                    <button type="button" class="amount-chip" data-amount="2000">₦2,000</button>
+                    <button type="button" class="amount-chip" data-amount="5000">₦5,000</button>
+                    <button type="button" class="amount-chip" data-amount="10000">₦10,000</button>
+                  </div>
+                  <span class="field-note" id="depositOutstandingNote"></span>
+                </div>
 
-              <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Secured by <b>Paystack</b></p>
+                <button type="submit" class="btn btn-primary" id="depositSubmit">
+                  <span class="btn-spinner"></span>
+                  <span class="btn-label">Pay with Paystack</span>
+                  <i class="bx bx-lock-alt"></i>
+                </button>
+
+                <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Secured by <b>Paystack</b></p>
+              </div>
+
+              <!-- ===== METHOD 2: MANUAL AUTOMATIC (temporary virtual account) ===== -->
+              <div class="deposit-method-panel" id="methodVirtual" data-method="virtual" style="display:none;">
+
+                <div class="dm-step" id="vmStepAmount">
+                  <div class="amount-field">
+                    <label for="virtualAmount">Amount</label>
+                    <div class="amount-input-wrap">
+                      <span class="currency-prefix">₦</span>
+                      <input type="number" id="virtualAmount" min="100" step="1" placeholder="0.00" inputmode="numeric">
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-primary" id="virtualProceedBtn">
+                    <span class="btn-spinner"></span>
+                    <span class="btn-label">Proceed</span>
+                    <i class="bx bx-right-arrow-alt"></i>
+                  </button>
+                </div>
+
+                <div class="dm-step" id="vmStepPending" style="display:none;">
+                  <div class="dm-countdown" id="vmCountdown">
+                    <i class="bx bx-time-five"></i>
+                    Expires in <strong id="vmCountdownValue">15:00</strong>
+                  </div>
+
+                  <div class="dm-warning">
+                    <i class="bx bx-error"></i>
+                    <span>Transfer the <strong>exact amount</strong> shown below. A different amount may not be detected automatically.</span>
+                  </div>
+
+                  <div class="dm-transfer-box">
+                    <div class="dm-transfer-row"><span>Bank</span><strong id="vmBankName">—</strong></div>
+                    <div class="dm-transfer-row">
+                      <span>Account number</span>
+                      <strong id="vmAccountNumber">—</strong>
+                      <button type="button" class="dm-copy-btn" data-copy-target="vmAccountNumber" aria-label="Copy account number"><i class="bx bx-copy"></i></button>
+                    </div>
+                    <div class="dm-transfer-row"><span>Account name</span><strong id="vmAccountName">—</strong></div>
+                    <div class="dm-transfer-row total"><span>Amount to transfer</span><strong id="vmAmount">₦0.00</strong></div>
+                  </div>
+
+                  <div class="dm-status" id="vmStatus"><i class="bx bx-loader-alt bx-spin"></i> Waiting for your transfer…</div>
+
+                  <button type="button" class="btn btn-ghost" id="virtualCancelBtn">Cancel Payment</button>
+                </div>
+              </div>
+
+              <!-- ===== METHOD 3: MANUAL TRANSFER (admin-approved) ===== -->
+              <div class="deposit-method-panel" id="methodManual" data-method="manual" style="display:none;">
+
+                <div class="dm-step" id="mtStepAmount">
+                  <div class="amount-field">
+                    <label for="manualAmount">Amount</label>
+                    <div class="amount-input-wrap">
+                      <span class="currency-prefix">₦</span>
+                      <input type="number" id="manualAmount" min="100" step="1" placeholder="0.00" inputmode="numeric">
+                    </div>
+                    <span class="field-note">A ₦20 transfer charge is added on top of this amount.</span>
+                  </div>
+                  <button type="button" class="btn btn-primary" id="manualProceedBtn">
+                    <span class="btn-spinner"></span>
+                    <span class="btn-label">Proceed</span>
+                    <i class="bx bx-right-arrow-alt"></i>
+                  </button>
+                </div>
+
+                <div class="dm-step" id="mtStepPending" style="display:none;">
+                  <div class="dm-warning">
+                    <i class="bx bx-error"></i>
+                    <span>Transfer the <strong>exact amount</strong> below from a bank account in your own name.</span>
+                  </div>
+
+                  <div class="dm-transfer-box">
+                    <div class="dm-transfer-row"><span>Bank</span><strong id="mtBankName">—</strong></div>
+                    <div class="dm-transfer-row">
+                      <span>Account number</span>
+                      <strong id="mtAccountNumber">—</strong>
+                      <button type="button" class="dm-copy-btn" data-copy-target="mtAccountNumber" aria-label="Copy account number"><i class="bx bx-copy"></i></button>
+                    </div>
+                    <div class="dm-transfer-row"><span>Account name</span><strong id="mtAccountName">—</strong></div>
+                    <div class="dm-transfer-row total"><span>Amount to transfer</span><strong id="mtTotalAmount">₦0.00</strong></div>
+                  </div>
+
+                  <div class="w-field">
+                    <label for="mtSenderBank">Bank you transferred from</label>
+                    <select id="mtSenderBank">
+                      <option value="" disabled selected>Select your bank</option>
+                    </select>
+                  </div>
+
+                  <div class="w-field">
+                    <label for="mtSenderName">Account name used to transfer</label>
+                    <input type="text" id="mtSenderName" placeholder="Name on the account you sent from" autocomplete="off">
+                  </div>
+
+                  <button type="button" class="btn btn-primary" id="manualPaidBtn" disabled>
+                    <span class="btn-spinner"></span>
+                    <span class="btn-label">I've Paid</span>
+                    <i class="bx bx-check"></i>
+                  </button>
+                  <button type="button" class="btn btn-ghost" id="manualCancelBtn">Cancel Payment</button>
+                </div>
+              </div>
+
             </form>
 
             <!-- ============ WITHDRAW PANEL ============ -->

@@ -153,6 +153,12 @@
 
       <div class="menu-divider"></div>
 
+      <a class="menu-remove-ads" href="remove-ads.html">
+        <i class="bx bx-shield-x"></i>
+        Remove Ad Pop-ups
+        <span class="active-tag" id="removeAdsStatus" style="display:none;">Active</span>
+      </a>
+
       <div class="menu-theme-row">
         <span>Dark theme</span>
         <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
@@ -183,7 +189,7 @@
       <!-- Banner explainer (relevant when arriving from the default ad banner) -->
       <div class="info-banner reveal delay-1">
         <i class="bx bx-info-circle"></i>
-        <span>Banner placements (top/bottom of pages) are <strong>Monthly ads only</strong>.</span>
+        <span>Banner placements (top/bottom of pages) are <strong>Monthly ads only</strong>. Regular ads rotate through the Advertisements page, home feed, and task feed.</span>
       </div>
 
       <!-- ================= AD FORM ================= -->
@@ -220,7 +226,7 @@
           <!-- Banner (Monthly) -->
           <div class="form-card reveal delay-1">
             <h2 class="fc-title">Or — Banner (Monthly) <span class="optional-tag">30 days</span></h2>
-            <p class="wp-hint">Top/bottom/floating banner placements. Only 3 banner slots exist at a time.</p>
+            <p class="wp-hint">Top/bottom banner placements. Only 3 banner slots exist at a time.</p>
 
             <div class="banner-slot-note" id="bannerSlotNote">
               <i class="bx bx-loader-alt bx-spin"></i>
@@ -244,200 +250,42 @@
             </div>
           </div>
 
-          <!-- Media -->
-          <div class="form-card reveal delay-2" id="adMediaCard">
-            <h2 class="fc-title" id="mediaCardTitle">
-              3. Ad image <span class="optional-tag">optional</span>
-            </h2>
-          
-            <!-- Normal advertisement media -->
-            <div id="normalMediaContent">
-              <div class="image-upload" id="imageUploadZone">
-                <input type="file" id="adImageInput" accept="image/*" hidden>
-          
-                <div class="image-upload-empty" id="imageUploadEmpty">
-                  <i class="bx bx-image-add"></i>
-                  <span>Tap to add an image</span>
-                </div>
-          
-                <img
-                  id="imagePreview"
-                  class="image-preview"
-                  style="display:none;"
-                  alt="Ad preview"
-                >
-          
-                <div
-                  class="image-upload-progress"
-                  id="imageUploadProgress"
-                  style="display:none;"
-                >
-                  <div class="iup-track">
-                    <div class="iup-fill" id="imageUploadFill"></div>
-                  </div>
-                  <span id="imageUploadPercent">0%</span>
-                </div>
-          
-                <button
-                  type="button"
-                  class="image-remove-btn"
-                  id="imageRemoveBtn"
-                  style="display:none;"
-                  aria-label="Remove image"
-                >
-                  <i class="bx bx-x"></i>
-                </button>
+          <!-- Image / Video (video only unlocks for Banner packages) -->
+          <div class="form-card reveal delay-2">
+            <h2 class="fc-title"><span id="mediaSectionTitle">3. Ad image</span> <span class="optional-tag" id="mediaOptionalTag">optional</span></h2>
+
+            <!-- Banner creative specs — only shown once a Banner package is selected -->
+            <div class="media-specs-note" id="mediaSpecsNote" style="display:none;">
+              <i class="bx bx-info-circle"></i>
+              <div>
+                <strong>Banner creative specs</strong>
+                <span>Banner space is a wide, short strip — your image or video must fit inside it. It can be smaller, never bigger.</span>
+                <ul id="mediaSpecsList"></ul>
               </div>
             </div>
-          
-            <!-- Banner-only media -->
-            <div id="bannerMediaContent" style="display:none;">
-          
-              <div class="banner-media-info">
-                <div class="banner-media-info-head">
-                  <i class="bx bx-info-circle"></i>
-                  <strong>Banner creative requirements</strong>
-                </div>
-          
-                <div class="banner-media-specs">
-                  <div class="banner-spec-row">
-                    <span>File type</span>
-                    <strong>Image or Video</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Image formats</span>
-                    <strong>WebP, JPG/JPEG or PNG</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Video formats</span>
-                    <strong>WebM or MP4</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Banner shape</span>
-                    <strong>Horizontal 3:1 ratio</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Maximum file size</span>
-                    <strong>5 MB</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Maximum video duration</span>
-                    <strong>15 seconds</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Maximum video resolution</span>
-                    <strong>720p</strong>
-                  </div>
-          
-                  <div class="banner-spec-row">
-                    <span>Recommended example</span>
-                    <strong>1500 × 500 px</strong>
-                  </div>
-                </div>
-          
-                <p>
-                  Your creative must be a horizontal rectangle matching the banner's
-                  shape. Smaller dimensions are allowed as long as the same 3:1 ratio
-                  is maintained. Images and videos are displayed inside the banner
-                  without stretching.
-                </p>
+
+            <div class="image-upload" id="imageUploadZone">
+              <input type="file" id="adImageInput" accept="image/*" hidden>
+              <div class="image-upload-empty" id="imageUploadEmpty">
+                <i class="bx bx-image-add"></i>
+                <span id="mediaUploadHint">Tap to add an image</span>
               </div>
-          
-              <div class="banner-media-upload" id="bannerMediaUploadZone">
-                <input
-                  type="file"
-                  id="bannerMediaInput"
-                  accept="image/webp,image/jpeg, image/jpg, image/png,video/webm,video/mp4"
-                  hidden
-                >
-          
-                <div class="banner-media-empty" id="bannerMediaEmpty">
-                  <i class="bx bx-cloud-upload"></i>
-                  <strong>Upload banner image or video</strong>
-                  <span>Tap here to choose your creative</span>
-                </div>
-          
-                <div
-                  class="banner-media-preview"
-                  id="bannerMediaPreview"
-                  style="display:none;"
-                >
-                  <img
-                    id="bannerImagePreview"
-                    style="display:none;"
-                    alt="Banner preview"
-                  >
-          
-                  <video
-                    id="bannerVideoPreview"
-                    style="display:none;"
-                    muted
-                    playsinline
-                    preload="metadata"
-                  ></video>
-          
-                  <button
-                    type="button"
-                    class="banner-media-remove"
-                    id="bannerMediaRemove"
-                    aria-label="Remove banner media"
-                  >
-                    <i class="bx bx-x"></i>
-                  </button>
-                </div>
+              <img id="imagePreview" class="image-preview" style="display:none;" alt="Ad preview">
+              <video id="videoPreview" class="image-preview" style="display:none;" muted playsinline loop autoplay></video>
+              <div class="image-upload-progress" id="imageUploadProgress" style="display:none;">
+                <div class="iup-track"><div class="iup-fill" id="imageUploadFill"></div></div>
+                <span id="imageUploadPercent">0%</span>
               </div>
-          
-              <div
-                class="banner-media-progress"
-                id="bannerMediaProgress"
-                style="display:none;"
-              >
-                <div class="iup-track">
-                  <div class="iup-fill" id="bannerMediaFill"></div>
-                </div>
-                <span id="bannerMediaPercent">0%</span>
-              </div>
-          
-              <div
-                class="banner-requirements"
-                id="bannerRequirements"
-                style="display:none;"
-              >
-                <div class="banner-requirement">
-                  <span>File type</span>
-                  <strong id="reqType"></strong>
-                </div>
-          
-                <div class="banner-requirement">
-                  <span>File size ≤ 5 MB</span>
-                  <strong id="reqSize"></strong>
-                </div>
-          
-                <div class="banner-requirement">
-                  <span>3:1 banner ratio</span>
-                  <strong id="reqRatio"></strong>
-                </div>
-          
-                <div class="banner-requirement" id="reqDurationRow">
-                  <span>Video duration ≤ 15 seconds</span>
-                  <strong id="reqDuration"></strong>
-                </div>
-          
-                <div class="banner-requirement" id="reqResolutionRow">
-                  <span>Video resolution ≤ 720p</span>
-                  <strong id="reqResolution"></strong>
-                </div>
-              </div>
+              <button type="button" class="image-remove-btn" id="imageRemoveBtn" style="display:none;" aria-label="Remove media">
+                <i class="bx bx-x"></i>
+              </button>
             </div>
+
+            <!-- Requirement checklist — fills in once a file is selected in Banner mode -->
+            <div class="media-checklist" id="mediaChecklist" style="display:none;"></div>
           </div>
 
-          <!-- Description -->
+          <!-- Description (hidden entirely for Banner packages — banners carry no description) -->
           <div class="form-card reveal delay-2" id="descriptionCard">
             <h2 class="fc-title">4. Description</h2>
             <div class="w-field">
@@ -480,7 +328,7 @@
           <!-- Non-refundable notice -->
           <div class="policy-warning">
             <i class="bx bx-error-circle"></i>
-            <span>Advertisements are non-refundable. If you delete an ad before it expires, you will not receive any balance back. </span>
+            <span>Advertisements are non-refundable. If you delete an ad before it expires, you will not receive any balance back — even for unused views or remaining days.</span>
           </div>
 
           <button type="submit" class="btn btn-primary" id="postAdSubmit">
@@ -520,7 +368,10 @@
     <a class="bn-item" href="home.html">
       <i class="bx bxs-home"></i> Home
     </a>
-    <a class="bn-item post-item" href="#" id="postModalTrigger" aria-label="Create a post" aria-haspopup="dialog" aria-controls="tnPostModal">   <span class="bn-post-circle"><i class="bx bx-plus"></i></span>   Post </a>
+    <a class="bn-item post-item" href="post.html">
+      <span class="bn-post-circle"><i class="bx bx-plus"></i></span>
+      Post
+    </a>
     <a class="bn-item" href="earn.html">
       <i class="bx bx-task"></i> Earn
     </a>
@@ -548,45 +399,5 @@
   })();
   </script>
   <!-- End of Tawk.to Script -->
-  <script>
-(function(){
-  "use strict";
-
-  const trigger=document.getElementById("postModalTrigger");
-  if(!trigger)return;
-
-  trigger.addEventListener("click",async function(e){
-    e.preventDefault();
-
-    if(!document.getElementById("tnPostModal")){
-      try{
-        const response=await fetch("components/post-modal.html",{cache:"no-cache"});
-        if(!response.ok)throw new Error("Failed to load post-modal.html: "+response.status);
-
-        const html=await response.text();
-        const wrapper=document.createElement("div");
-        wrapper.innerHTML=html;
-
-        const scripts=[...wrapper.querySelectorAll("script")];
-        scripts.forEach(s=>s.remove());
-        document.body.appendChild(wrapper);
-
-        for(const oldScript of scripts){
-          const newScript=document.createElement("script");
-          if(oldScript.src)newScript.src=oldScript.src;
-          else newScript.textContent=oldScript.textContent;
-          document.body.appendChild(newScript);
-        }
-      }catch(error){
-        console.error("TaskNOVA Post Modal failed to load:",error);
-        return;
-      }
-    }
-
-    if(window.TaskNovaPostModal)window.TaskNovaPostModal.open();
-    else document.dispatchEvent(new CustomEvent("tasknova:open-post-modal"));
-  });
-})();
-</script>
 </body>
 </html>
