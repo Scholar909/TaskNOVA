@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA admin — user details." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>User Details — TaskNOVA Admin</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+<!-- Basic Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+<!-- Filled Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+<!-- Brand Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Admin User Details stylesheet -->
+  <link rel="stylesheet" href="../css/admin/user-details.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="dashboard.html" aria-label="TaskNOVA admin home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="brand-tag">Admin</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">A</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">Admin</span>
+        </div>
+      </div>
+
+      <nav class="menu-single-wrap">
+        <a href="dashboard.html" class="menu-single">
+          <i class="bx bxs-dashboard"></i> Dashboard
+        </a>
+      </nav>
+
+      <div class="menu-group open" id="menuGroupUsers">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-group"></i> Users</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="users.html" class="active"><i class="bx bx-user-check"></i> User Management</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupTasks">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-task"></i> Tasks</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="tasks.html"><i class="bx bx-list-check"></i> Tasks &amp; Requests</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertising">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-megaphone"></i> Advertising</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupFinance">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-wallet"></i> Finance</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="finance.html"><i class="bx bx-line-chart"></i> Finance</a>
+              <a href="manual-transactions.html"><i class="bx bx-transfer-alt"></i> Manual Transactions</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupReports">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-shield-alt-2"></i> Reports &amp; Support</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="reports-support.html"><i class="bx bx-support"></i> Reports &amp; Support</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdministration">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-cog"></i> Administration</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="settings.html"><i class="bx bx-slider-alt"></i> Settings</a>
+              <a href="admin-manual.html"><i class="bx bx-book-content"></i> Admin Manual</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container narrow">
+
+      <a href="users.html" class="back-link reveal">
+        <i class="bx bx-chevron-left"></i> Back to User Management
+      </a>
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>User Details</h1>
+        <p>Full account record — most fields are read-only.</p>
+      </div>
+
+      <div class="details-notfound" id="detailsNotFound" style="display:none;">
+        <i class="bx bx-user-x"></i>
+        <h2>User not found</h2>
+        <p>This account may have been deleted, or the link is incorrect.</p>
+        <a href="users.html" class="btn btn-ghost">Back to User Management</a>
+      </div>
+
+      <div id="detailsContent">
+
+        <!-- ================= PROFILE ================= -->
+        <section class="dash-card reveal delay-1">
+          <div class="dash-card-head">
+            <div>
+              <h2>Profile</h2>
+              <p>Full sign-up details for this account.</p>
+            </div>
+          </div>
+
+          <div class="details-hero">
+            <div class="details-avatar" id="detailsAvatar">—</div>
+            <div class="details-hero-info">
+              <strong id="detailsFullName" class="skeleton-text">Loading…</strong>
+              <span id="detailsUsername">@username</span>
+            </div>
+            <span class="status-pill active" id="detailsStatusPill"><i class="bx bxs-circle"></i> Active</span>
+          </div>
+
+          <div class="details-readonly-grid">
+            <div class="ro-item"><span>Email</span><strong id="roEmail" class="skeleton">—</strong></div>
+            <div class="ro-item"><span>Username</span><strong id="roUsername" class="skeleton">—</strong></div>
+            <div class="ro-item"><span>Joined</span><strong id="roJoined" class="skeleton">—</strong></div>
+            <div class="ro-item"><span>Account age</span><strong id="roAge" class="skeleton">—</strong></div>
+          </div>
+
+          <form id="detailsForm">
+            <div class="w-field">
+              <label for="editFullName">Full name</label>
+              <input type="text" id="editFullName" disabled required>
+            </div>
+
+            <div class="w-field">
+              <label for="editAccountType">Account type</label>
+              <select id="editAccountType" disabled>
+                <option value="Student">Student</option>
+                <option value="Teacher">Teacher</option>
+                <option value="None">None</option>
+              </select>
+            </div>
+
+            <div class="row-2" id="editInstitutionWrap" style="display:none;">
+              <div class="w-field">
+                <label for="editInstitution">Institution</label>
+                <input type="text" id="editInstitution" disabled placeholder="e.g. University of Abuja">
+              </div>
+              <div class="w-field">
+                <label for="editInstitutionAbbr">Abbreviation</label>
+                <input type="text" id="editInstitutionAbbr" disabled maxlength="12" placeholder="e.g. UNIABUJA">
+              </div>
+            </div>
+          </form>
+        </section>
+
+        <!-- ================= LIFETIME STATS ================= -->
+        <section class="stat-cards reveal delay-1">
+          <div class="stat-card">
+            <div class="sc-icon"><i class="bx bx-download"></i></div>
+            <div class="sc-label">Total Lifetime Deposited</div>
+            <div class="sc-value skeleton" id="lifetimeDeposited">₦0.00</div>
+            <div class="sc-note">Never editable</div>
+          </div>
+          <div class="stat-card profit">
+            <div class="sc-icon"><i class="bx bx-trending-up"></i></div>
+            <div class="sc-label">Total Lifetime Earned</div>
+            <div class="sc-value skeleton" id="lifetimeEarned">₦0.00</div>
+            <div class="sc-note">Never editable</div>
+          </div>
+        </section>
+
+        <!-- ================= DECLINES ================= -->
+        <section class="dash-card reveal delay-2">
+          <div class="dash-card-head">
+            <div>
+              <h2>Task declines</h2>
+              <p>Locks the account at 50 until the unlock fee is paid.</p>
+            </div>
+          </div>
+
+          <div class="declines-track">
+            <div class="declines-fill" id="declinesFill" style="width:0%;"></div>
+          </div>
+          <div class="declines-row">
+            <span class="declines-count" id="declinesCount">0/50</span>
+            <span class="declines-note" id="declinesNote">—</span>
+          </div>
+        </section>
+
+        <!-- ================= REFERRALS ================= -->
+        <section class="dash-card reveal delay-2">
+          <div class="dash-card-head">
+            <div>
+              <h2>Referrals</h2>
+              <p>Not editable.</p>
+            </div>
+          </div>
+
+          <div class="referral-row">
+            <div class="referral-item">
+              <strong id="referralTotal" class="skeleton">0</strong>
+              <span>People referred</span>
+            </div>
+            <div class="referral-item">
+              <strong id="referralBonus" class="skeleton">0</strong>
+              <span>Triggered bonus</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= ACTIONS ================= -->
+        <section class="dash-card reveal delay-3">
+          <div class="dash-card-head">
+            <div>
+              <h2>Actions</h2>
+            </div>
+          </div>
+
+          <div class="details-actions" id="viewActions">
+            <button type="button" class="btn btn-ghost" id="editToggleBtn"><i class="bx bx-edit-alt"></i> Edit</button>
+            <button type="button" class="btn btn-ghost" id="blockToggleBtn"><i class="bx bx-lock-alt"></i> Block</button>
+            <button type="button" class="btn btn-ghost" id="walletEditsBtn"><i class="bx bx-transfer-alt"></i> Wallet Edits</button>
+            <button type="button" class="btn btn-danger" id="deleteBtn"><i class="bx bx-trash"></i> Delete</button>
+          </div>
+
+          <div class="details-actions" id="editActions" style="display:none;">
+            <button type="button" class="btn btn-ghost" id="editCancelBtn">Cancel</button>
+            <button type="button" class="btn btn-primary" id="editSaveBtn">
+              <span class="btn-spinner"></span>
+              <span class="btn-label">Save Changes</span>
+              <i class="bx bx-check"></i>
+            </button>
+          </div>
+
+          <div class="edit-form-msg" id="editFormMsg"></div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- =========================================================
+       DELETE CONFIRMATION MODAL (strong confirmation)
+       ========================================================= -->
+  <div class="modal-backdrop" id="deleteModalBackdrop">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+      <div class="modal-icon"><i class="bx bx-error"></i></div>
+      <h3 id="deleteModalTitle">Delete this account?</h3>
+      <p>
+        This permanently deletes <strong id="deleteModalUsername">@username</strong>'s
+        account, wallet, and TaskNOVA data. This cannot be undone.
+      </p>
+
+      <div class="w-field">
+        <label for="deleteConfirmInput">Type <strong id="deleteConfirmTarget">@username</strong> to confirm</label>
+        <input type="text" id="deleteConfirmInput" autocomplete="off" placeholder="Type the username exactly">
+      </div>
+
+      <div class="modal-msg" id="deleteModalMsg"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="deleteModalCancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="deleteModalConfirm" disabled>
+          <span class="btn-spinner"></span>
+          <span class="btn-label">Delete Account</span>
+          <i class="bx bx-trash"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="dashboard.html">
+      <i class="bx bxs-dashboard"></i> Dashboard
+    </a>
+    <a class="bn-item active" href="users.html">
+      <i class="bx bx-group"></i> Users
+    </a>
+    <a class="bn-item" href="tasks.html">
+      <i class="bx bx-task"></i> Tasks
+    </a>
+    <a class="bn-item" href="finance.html">
+      <i class="bx bx-wallet"></i> Finance
+    </a>
+    <a class="bn-item" href="reports-support.html">
+      <i class="bx bx-shield-alt-2"></i> Reports
+    </a>
+  </nav>
+
+  <!-- Admin user details logic -->
+  <script type="module" src="../js/admin/user-details.js"></script>
+</body>
+</html>
