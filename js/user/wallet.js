@@ -476,6 +476,8 @@ onAuthStateChanged(auth, (user) => {
     currentWallet.earned = data.wallet?.earned ?? 0;
     currentOutstanding = data.outstanding ?? 0;
 
+    updateWithdrawSubmitState();
+
     if (depositValueEl) { depositValueEl.classList.remove("skeleton"); depositValueEl.textContent = formatNaira(currentWallet.deposit); }
     if (earnedValueEl) { earnedValueEl.classList.remove("skeleton"); earnedValueEl.textContent = formatNaira(currentWallet.earned); }
 
@@ -1061,7 +1063,8 @@ function resetAccountResolution() {
 
 function updateWithdrawSubmitState() {
   const amount = Number(withdrawAmountInput.value) || 0;
-  const canSubmit = amount >= WITHDRAWAL_MIN && amount <= currentWallet.earned && !!resolvedAccountName && !!bankSelect.value;
+  const canSubmit = amount >= WITHDRAWAL_MIN && amount <= currentWallet.earned && 
+    currentOutstanding <= 0 && !!resolvedAccountName && !!bankSelect.value;
   withdrawSubmit.disabled = !canSubmit;
 }
 
@@ -1129,6 +1132,15 @@ withdrawForm.addEventListener("submit", async (e) => {
   const bankCode = bankSelect.value;
   const bankName = bankSelect.options[bankSelect.selectedIndex]?.textContent || "";
   const accountNumber = accountNumberInput.value;
+
+  if (currentOutstanding > 0) {
+    showPanelMsg(
+      withdrawMsg, 
+      "error", 
+      `You have an outstanding balance of ${formatNaira(currentOutstanding)}. Clear it via swap or deposit before withdrawing.`
+    );
+    return;
+  }
 
   if (amount < WITHDRAWAL_MIN) {
     showPanelMsg(withdrawMsg, "error", `Minimum withdrawal is ${formatNaira(WITHDRAWAL_MIN)}.`);
