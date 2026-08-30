@@ -650,6 +650,107 @@ img { display: block; max-width: 100%; }
 .fee-row.total { border-top: 1px dashed var(--line); padding-top: 7px; margin-top: 2px; font-weight: 700; }
 .fee-row.total span:last-child { color: var(--success); }
 
+/* ---------- DEPOSIT METHODS ---------- */
+.deposit-method-panel { display: grid; gap: 14px; }
+.dm-step { display: grid; gap: 14px; }
+
+.dm-countdown {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: .8rem;
+  color: var(--text-soft);
+}
+
+.dm-countdown strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.dm-countdown.warn { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.dm-countdown.warn strong { color: var(--danger); }
+.dm-countdown i { font-size: 1rem; }
+
+.dm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: .8rem;
+  line-height: 1.5;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.dm-warning i { font-size: 1.05rem; margin-top: 1px; flex-shrink: 0; }
+.dm-warning strong { color: var(--danger); }
+
+.dm-transfer-box {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-2);
+}
+
+.dm-transfer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: .84rem;
+}
+
+.dm-transfer-row span:first-child { color: var(--text-soft); flex-shrink: 0; }
+.dm-transfer-row strong { text-align: right; word-break: break-word; }
+.dm-transfer-row.total { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 2px; font-weight: 700; }
+.dm-transfer-row.total strong { color: var(--primary); }
+
+.dm-copy-btn {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-solid);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: .85rem;
+  transition: color .2s ease, border-color .2s ease;
+}
+
+.dm-copy-btn:hover { color: var(--primary); border-color: rgba(22,128,255,.4); }
+.dm-copy-btn.copied { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+
+.dm-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  font-size: .82rem;
+  background: var(--surface-2);
+  color: var(--text-soft);
+}
+
+.dm-status i { font-size: 1.1rem; flex-shrink: 0; }
+.dm-status.success { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.dm-status.fail { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+.btn-ghost {
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.btn-ghost:hover { box-shadow: none; border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
 /* Swap preview */
 .swap-preview {
   display: flex;
