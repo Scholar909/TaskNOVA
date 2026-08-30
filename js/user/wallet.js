@@ -17,6 +17,7 @@ import {
   collection,
   where,
   addDoc,
+  setDoc,
   query,
   orderBy,
   limit,
@@ -284,7 +285,9 @@ const PAYSTACK_PUBLIC_KEY = "pk_test_REPLACE_WITH_YOUR_PAYSTACK_PUBLIC_KEY";
 const CLOUD_FN = {
   verifyDeposit: "https://REGION-PROJECT.cloudfunctions.net/verifyPaystackDeposit",
   resolveAccount: "https://REGION-PROJECT.cloudfunctions.net/resolveBankAccount",
-  requestWithdrawal: "https://REGION-PROJECT.cloudfunctions.net/requestWithdrawal"
+  requestWithdrawal: "https://REGION-PROJECT.cloudfunctions.net/requestWithdrawal",
+  createVirtualAccount: "https://REGION-PROJECT.cloudfunctions.net/createFlutterwaveVirtualAccount",
+  cancelVirtualAccount: "https://REGION-PROJECT.cloudfunctions.net/cancelFlutterwaveVirtualAccount"
 };
 
 const nairaFormat = new Intl.NumberFormat("en-NG", {
@@ -570,8 +573,15 @@ function renderTransactions(rows) {
 }
 
 /* ===========================================================
-   DEPOSIT — Paystack Inline Checkout
+   DEPOSIT — three methods sharing one panel + one panel-msg
    =========================================================== */
+const depositMethodSelect = document.getElementById("depositMethod");
+const depositMethodNote = document.getElementById("depositMethodNote");
+const methodAutomaticEl = document.getElementById("methodAutomatic");
+const methodVirtualEl = document.getElementById("methodVirtual");
+const methodManualEl = document.getElementById("methodManual");
+
+/* ===== METHOD 1: INSTANT AUTOMATIC — Paystack Inline Checkout ===== */
 const depositAmountInput = document.getElementById("depositAmount");
 const depositChips = document.getElementById("depositChips");
 const depositMsg = document.getElementById("depositMsg");
@@ -593,6 +603,12 @@ depositAmountInput.addEventListener("input", () => {
 
 depositForm.addEventListener("submit", (e) => {
   e.preventDefault();
+  // The other two methods drive themselves entirely through their own
+  // buttons (type="button") — this handler only ever needs to fire for
+  // Instant Automatic, but Enter-inside-a-text-input can still trigger a
+  // form submit regardless of which panel is visible, hence the guard.
+  if (depositMethodSelect.value !== "automatic") return;
+
   clearPanelMsg(depositMsg);
 
   const amount = Number(depositAmountInput.value);
@@ -650,6 +666,7 @@ async function verifyDepositOnServer(reference) {
     showPanelMsg(depositMsg, "success", "Payment verified! Your wallet has been credited.");
     depositForm.reset();
     depositChips.querySelectorAll(".amount-chip").forEach((c) => c.classList.remove("active"));
+    setTimeout(() => { window.location.href = "transactions.html"; }, 1500);
   } catch (err) {
     console.error("Deposit verification error:", err);
     showPanelMsg(depositMsg, "error", "We received your payment but couldn't confirm it automatically. Contact support with your reference: " + reference);
@@ -657,6 +674,351 @@ async function verifyDepositOnServer(reference) {
     setBtnLoading(depositSubmit, false);
   }
 }
+
+/* ===== METHOD 2: MANUAL AUTOMATIC — temporary Flutterwave virtual account =====
+   User transfers to a one-time virtual account. Flutterwave's webhook tells
+   our backend when the transfer lands; the backend flips a Firestore doc's
+   status, which this page listens to in real time — no "I've Paid" button,
+   no polling from the client. See BACKEND NOTES at the bottom. */
+const virtualAmountInput = document.getElementById("virtualAmount");
+const virtualProceedBtn = document.getElementById("virtualProceedBtn");
+const vmStepAmount = document.getElementById("vmStepAmount");
+const vmStepPending = document.getElementById("vmStepPending");
+const vmCountdown = document.getElementById("vmCountdown");
+const vmCountdownValue = document.getElementById("vmCountdownValue");
+const vmBankName = document.getElementById("vmBankName");
+const vmAccountNumber = document.getElementById("vmAccountNumber");
+const vmAccountName = document.getElementById("vmAccountName");
+const vmAmount = document.getElementById("vmAmount");
+const vmStatus = document.getElementById("vmStatus");
+const virtualCancelBtn = document.getElementById("virtualCancelBtn");
+
+let vmTimerInterval = null;
+let vmUnsubscribe = null;
+let vmExpiresAt = null;
+let vmReference = null;
+let vmSettled = false;
+
+function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function startVmCountdown(expiresAt) {
+  clearInterval(vmTimerInterval);
+  vmExpiresAt = expiresAt;
+
+  const tick = () => {
+    const remaining = vmExpiresAt.getTime() - Date.now();
+    if (remaining <= 0) {
+      vmCountdownValue.textContent = "0:00";
+      vmCountdown.classList.add("warn");
+      clearInterval(vmTimerInterval);
+      if (!vmSettled) handleVmOutcome("expired");
+      return;
+    }
+    vmCountdownValue.textContent = formatCountdown(remaining);
+    vmCountdown.classList.toggle("warn", remaining < 60000);
+  };
+
+  tick();
+  vmTimerInterval = setInterval(tick, 1000);
+}
+
+function stopVmWatchers() {
+  clearInterval(vmTimerInterval);
+  vmTimerInterval = null;
+  if (vmUnsubscribe) { vmUnsubscribe(); vmUnsubscribe = null; }
+}
+
+function resetVirtualPanel() {
+  stopVmWatchers();
+  vmReference = null;
+  vmSettled = false;
+  vmStepPending.style.display = "none";
+  vmStepAmount.style.display = "";
+  vmCountdown.classList.remove("warn");
+  vmStatus.className = "dm-status";
+  vmStatus.innerHTML = `<i class="bx bx-loader-alt bx-spin"></i> Waiting for your transfer…`;
+  requestAnimationFrame(syncWalletHeight);
+}
+
+function handleVmOutcome(outcome) {
+  // outcome: "successful" | "failed" | "expired"
+  vmSettled = true;
+  stopVmWatchers();
+
+  if (outcome === "successful") {
+    vmStatus.className = "dm-status success";
+    vmStatus.innerHTML = `<i class="bx bx-check-circle"></i> Payment successful — your wallet has been credited.`;
+  } else {
+    vmStatus.className = "dm-status fail";
+    vmStatus.innerHTML = outcome === "expired"
+      ? `<i class="bx bx-x-circle"></i> This virtual account expired before payment was received.`
+      : `<i class="bx bx-x-circle"></i> Payment wasn't received — please try again.`;
+  }
+
+  setTimeout(() => { window.location.href = "transactions.html"; }, 1800);
+}
+
+virtualProceedBtn.addEventListener("click", async () => {
+  clearPanelMsg(depositMsg);
+  const amount = Number(virtualAmountInput.value);
+  if (!amount || amount < 100) {
+    showPanelMsg(depositMsg, "error", "Enter an amount of at least ₦100.");
+    return;
+  }
+  if (!currentUser) return;
+
+  setBtnLoading(virtualProceedBtn, true);
+
+  try {
+    const idToken = await currentUser.getIdToken();
+    const res = await fetch(CLOUD_FN.createVirtualAccount, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + idToken
+      },
+      body: JSON.stringify({ amount })
+    });
+
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || "Couldn't create a virtual account. Please try again.");
+
+    vmReference = result.reference;
+    vmSettled = false;
+    vmBankName.textContent = result.bankName || "—";
+    vmAccountNumber.textContent = result.accountNumber || "—";
+    vmAccountName.textContent = result.accountName || "—";
+    vmAmount.textContent = formatNaira(amount);
+
+    vmStepAmount.style.display = "none";
+    vmStepPending.style.display = "";
+    startVmCountdown(new Date(result.expiresAt));
+
+    // The backend (webhook handler) owns this doc's lifecycle — see
+    // BACKEND NOTES. We only ever read it.
+    vmUnsubscribe = onSnapshot(doc(db, "virtualAccountPayments", vmReference), (snap) => {
+      const status = snap.data()?.status;
+      if (!vmSettled && (status === "successful" || status === "failed" || status === "expired")) {
+        handleVmOutcome(status);
+      }
+    }, (err) => {
+      console.error("Virtual account status listener error:", err);
+    });
+
+    requestAnimationFrame(syncWalletHeight);
+  } catch (err) {
+    console.error("Create virtual account error:", err);
+    showPanelMsg(depositMsg, "error", err.message || "Something went wrong. Please try again.");
+  } finally {
+    setBtnLoading(virtualProceedBtn, false);
+  }
+});
+
+virtualCancelBtn.addEventListener("click", async () => {
+  const referenceToCancel = vmReference;
+  resetVirtualPanel();
+  virtualAmountInput.value = "";
+
+  if (referenceToCancel && currentUser) {
+    try {
+      const idToken = await currentUser.getIdToken();
+      await fetch(CLOUD_FN.cancelVirtualAccount, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: JSON.stringify({ reference: referenceToCancel })
+      });
+    } catch (err) {
+      console.error("Cancel virtual account error:", err);
+    }
+  }
+});
+
+/* ===== METHOD 3: MANUAL TRANSFER — admin-approved bank transfer =====
+   No external API involved — this only ever creates a "pending_review"
+   record for an admin to confirm against TaskNOVA's real bank statement. */
+const manualAmountInput = document.getElementById("manualAmount");
+const manualProceedBtn = document.getElementById("manualProceedBtn");
+const mtStepAmount = document.getElementById("mtStepAmount");
+const mtStepPending = document.getElementById("mtStepPending");
+const mtBankName = document.getElementById("mtBankName");
+const mtAccountNumber = document.getElementById("mtAccountNumber");
+const mtAccountName = document.getElementById("mtAccountName");
+const mtTotalAmount = document.getElementById("mtTotalAmount");
+const mtSenderBank = document.getElementById("mtSenderBank");
+const mtSenderName = document.getElementById("mtSenderName");
+const manualPaidBtn = document.getElementById("manualPaidBtn");
+const manualCancelBtn = document.getElementById("manualCancelBtn");
+
+const MANUAL_TRANSFER_FEE = 20;
+let manualDestinationBank = null; // admin-configured, loaded from Firestore
+let manualPendingAmount = 0;
+
+NIGERIAN_BANKS.forEach((bank) => {
+  const opt = document.createElement("option");
+  opt.value = bank.name;
+  opt.textContent = bank.name;
+  mtSenderBank.appendChild(opt);
+});
+
+// TaskNOVA's receiving bank account for manual transfers — set by an admin
+// in Firestore at settings/manualTransferBank { bankName, accountNumber, accountName }.
+onSnapshot(doc(db, "settings", "manualTransferBank"), (snap) => {
+  manualDestinationBank = snap.exists() ? snap.data() : null;
+}, (err) => {
+  console.error("Manual transfer bank details listener error:", err);
+});
+
+function updateManualPaidState() {
+  manualPaidBtn.disabled = !mtSenderBank.value || !mtSenderName.value.trim();
+}
+mtSenderBank.addEventListener("change", updateManualPaidState);
+mtSenderName.addEventListener("input", updateManualPaidState);
+
+function resetManualPanel() {
+  mtStepPending.style.display = "none";
+  mtStepAmount.style.display = "";
+  mtSenderBank.value = "";
+  mtSenderName.value = "";
+  updateManualPaidState();
+  requestAnimationFrame(syncWalletHeight);
+}
+
+manualProceedBtn.addEventListener("click", () => {
+  clearPanelMsg(depositMsg);
+  const amount = Number(manualAmountInput.value);
+  if (!amount || amount < 100) {
+    showPanelMsg(depositMsg, "error", "Enter an amount of at least ₦100.");
+    return;
+  }
+  if (!manualDestinationBank) {
+    showPanelMsg(depositMsg, "error", "Manual transfer isn't set up yet — please try another method or contact support.");
+    return;
+  }
+
+  manualPendingAmount = amount;
+  mtBankName.textContent = manualDestinationBank.bankName || "—";
+  mtAccountNumber.textContent = manualDestinationBank.accountNumber || "—";
+  mtAccountName.textContent = manualDestinationBank.accountName || "—";
+  mtTotalAmount.textContent = formatNaira(amount + MANUAL_TRANSFER_FEE);
+
+  mtStepAmount.style.display = "none";
+  mtStepPending.style.display = "";
+  updateManualPaidState();
+  requestAnimationFrame(syncWalletHeight);
+});
+
+manualCancelBtn.addEventListener("click", () => {
+  resetManualPanel();
+  manualAmountInput.value = "";
+});
+
+manualPaidBtn.addEventListener("click", async () => {
+  if (!currentUser || manualPaidBtn.disabled) return;
+
+  setBtnLoading(manualPaidBtn, true);
+
+  try {
+    const depositRef = doc(collection(db, "manualDeposits"));
+    await setDoc(depositRef, {
+      uid: currentUser.uid,
+      amount: manualPendingAmount,
+      fee: MANUAL_TRANSFER_FEE,
+      totalExpected: manualPendingAmount + MANUAL_TRANSFER_FEE,
+      destinationBank: manualDestinationBank,
+      senderBank: mtSenderBank.value,
+      senderName: mtSenderName.value.trim(),
+      status: "pending_review",
+      createdAt: serverTimestamp()
+    });
+
+    const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
+    await setDoc(txRef, {
+      type: "deposit",
+      direction: "pending",
+      title: "Manual bank transfer deposit",
+      amount: manualPendingAmount,
+      status: "pending_review",
+      method: "manual_transfer",
+      manualDepositId: depositRef.id,
+      createdAt: serverTimestamp()
+    });
+
+    showPanelMsg(depositMsg, "success", "Submitted! Your deposit is pending admin approval.");
+    setTimeout(() => { window.location.href = "transactions.html"; }, 1600);
+  } catch (err) {
+    console.error("Manual deposit submit error:", err);
+    showPanelMsg(depositMsg, "error", err.message || "Something went wrong. Please try again.");
+  } finally {
+    setBtnLoading(manualPaidBtn, false);
+  }
+});
+
+/* ===== COPY-TO-CLIPBOARD (account number buttons in methods 2 & 3) ===== */
+document.querySelectorAll(".dm-copy-btn").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const target = document.getElementById(btn.dataset.copyTarget);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.textContent.trim());
+      btn.classList.add("copied");
+      const icon = btn.querySelector("i");
+      icon.className = "bx bx-check";
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        icon.className = "bx bx-copy";
+      }, 1500);
+    } catch (err) {
+      console.error("Clipboard copy failed:", err);
+    }
+  });
+});
+
+/* ===== Enter key inside an amount field proceeds, same as clicking ===== */
+virtualAmountInput.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  virtualProceedBtn.click();
+});
+manualAmountInput.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  manualProceedBtn.click();
+});
+
+/* ===== DEPOSIT METHOD SWITCH — must come after all three methods above
+   are fully wired, since switching away from a method resets it. ===== */
+const DEPOSIT_METHOD_NOTES = {
+  automatic: "Instant Automatic credits your wallet immediately after payment.",
+  virtual: "Transfer to a one-time virtual account — your wallet is credited automatically once the transfer is detected.",
+  manual: "Transfer directly to TaskNOVA's bank account — your wallet is credited after an admin confirms the payment."
+};
+
+let currentDepositMethod = depositMethodSelect.value;
+
+function setDepositMethod(method) {
+  if (currentDepositMethod === "virtual" && method !== "virtual") resetVirtualPanel();
+  if (currentDepositMethod === "manual" && method !== "manual") resetManualPanel();
+  currentDepositMethod = method;
+
+  methodAutomaticEl.style.display = method === "automatic" ? "" : "none";
+  methodVirtualEl.style.display = method === "virtual" ? "" : "none";
+  methodManualEl.style.display = method === "manual" ? "" : "none";
+  depositMethodNote.textContent = DEPOSIT_METHOD_NOTES[method] || "";
+
+  clearPanelMsg(depositMsg);
+  requestAnimationFrame(syncWalletHeight);
+}
+
+depositMethodSelect.addEventListener("change", () => setDepositMethod(depositMethodSelect.value));
+setDepositMethod(depositMethodSelect.value);
 
 /* ===========================================================
    WITHDRAWAL — bank resolve + fee preview + request
@@ -943,4 +1305,64 @@ swapForm.addEventListener("submit", async (e) => {
         request manually within 24–48 hours per the current fallback plan.
 
    Update PAYSTACK_PUBLIC_KEY and the CLOUD_FN URLs above once these exist.
+
+   ===========================================================
+   METHOD 2 — MANUAL AUTOMATIC (Flutterwave virtual account)
+   ===========================================================
+   4. createFlutterwaveVirtualAccount(amount)
+      - Call Flutterwave's "Create a Virtual Account" endpoint for a
+        one-time (not permanent) NGN account, scoped to this exact amount.
+      - Create a Firestore doc at virtualAccountPayments/{reference}
+        (reference = Flutterwave's tx_ref/order_ref) with:
+          { uid, amount, status: "pending", createdAt, expiresAt }
+      - Return { reference, accountNumber, bankName, accountName, expiresAt }
+        to the client — expiresAt should match whatever TTL you set on the
+        virtual account itself (the client's countdown is cosmetic only;
+        the real deadline must be enforced server-side too).
+
+   5. Flutterwave webhook handler (separate HTTPS function, not called by
+      this client directly)
+      - Verify the webhook signature against your Flutterwave secret hash.
+      - On a successful charge for a known reference: credit
+        wallet.deposit (Outstanding Priority Rule, same as Paystack),
+        write a "transactions" doc (type: "deposit", direction: "credit"),
+        and update virtualAccountPayments/{reference}.status to "successful".
+      - On failure, or a background job when "now > expiresAt" and the
+        doc is still "pending": set status to "failed" or "expired".
+      - This status field is the only thing the client listens to — it
+        never polls Flutterwave itself and never sees a secret key.
+
+   6. cancelFlutterwaveVirtualAccount(reference)
+      - Best-effort: mark virtualAccountPayments/{reference}.status as
+        "cancelled" (only if it's still "pending" — never overwrite a
+        result that already landed) so a late webhook can't resurrect it.
+        The client has already reset its own UI by the time this call
+        goes out, so failures here are logged, not surfaced to the user.
+
+   ===========================================================
+   METHOD 3 — MANUAL TRANSFER (admin-approved)
+   ===========================================================
+   No Cloud Function is required for the user-facing half — the client
+   writes directly to two Firestore collections (same lightweight pattern
+   as Post Task / Swap), protected by Firestore rules that only allow a
+   user to create (never update/delete) their own manualDeposits + pending
+   transactions doc:
+
+   - manualDeposits/{id}: { uid, amount, fee, totalExpected,
+     destinationBank, senderBank, senderName, status: "pending_review",
+     createdAt }
+   - users/{uid}/transactions/{id}: mirrors it for the Recent Wallet
+     Activity list and transactions.html (direction: "pending").
+
+   What an admin panel still needs to do, server-side, on Approve/Reject:
+   - Approve: in one transaction, credit wallet.deposit by `amount` (NOT
+     totalExpected — the ₦20 is a transfer fee, not part of what's owed
+     to the user), set manualDeposits/{id}.status to "approved", and
+     update the mirrored transactions doc to status: "successful",
+     direction: "credit".
+   - Reject: set both statuses to "rejected" and leave the wallet
+     untouched.
+   - Populate settings/manualTransferBank { bankName, accountNumber,
+     accountName } from the admin side — the deposit page reads it live
+     and shows "not set up yet" until it exists.
    =========================================================== */
