@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA admin — platform overview." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Dashboard — TaskNOVA Admin</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+<!-- Basic Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+<!-- Filled Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+<!-- Brand Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Admin Dashboard stylesheet -->
+  <link rel="stylesheet" href="../css/admin/dashboard.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="dashboard.html" aria-label="TaskNOVA admin home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="brand-tag">Admin</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">A</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">Admin</span>
+        </div>
+      </div>
+
+      <nav class="menu-single-wrap">
+        <a href="dashboard.html" class="menu-single active">
+          <i class="bx bxs-dashboard"></i> Dashboard
+        </a>
+      </nav>
+
+      <div class="menu-group" id="menuGroupUsers">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-group"></i> Users</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="users.html"><i class="bx bx-user-check"></i> User Management</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupTasks">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-task"></i> Tasks</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="tasks.html"><i class="bx bx-list-check"></i> Tasks &amp; Requests</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertising">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-megaphone"></i> Advertising</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupFinance">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-wallet"></i> Finance</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="finance.html"><i class="bx bx-line-chart"></i> Finance</a>
+              <a href="manual-transactions.html"><i class="bx bx-transfer-alt"></i> Manual Transactions</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupReports">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-shield-alt-2"></i> Reports &amp; Support</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="reports-support.html"><i class="bx bx-support"></i> Reports &amp; Support</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdministration">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-cog"></i> Administration</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="settings.html"><i class="bx bx-slider-alt"></i> Settings</a>
+              <a href="admin-manual.html"><i class="bx bx-book-content"></i> Admin Manual</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Dashboard</h1>
+        <p>Platform overview at a glance.</p>
+      </div>
+
+      <!-- ================= TOP STATS ================= -->
+      <section class="stat-cards">
+        <div class="stat-card reveal delay-1">
+          <div class="sc-icon"><i class="bx bx-group"></i></div>
+          <div class="sc-label">Total Users</div>
+          <div class="sc-value skeleton" id="totalUsersValue">—</div>
+          <div class="sc-note">All registered accounts</div>
+        </div>
+
+        <div class="stat-card profit reveal delay-2">
+          <div class="sc-icon"><i class="bx bx-trending-up"></i></div>
+          <div class="sc-label">Total Profit</div>
+          <div class="sc-value skeleton" id="totalProfitValue">₦0.00</div>
+          <div class="sc-note">Task fees, ad &amp; banner payments only</div>
+        </div>
+      </section>
+
+      <!-- ================= SIGNUP GROWTH ================= -->
+      <section class="dash-card reveal delay-1">
+        <div class="dash-card-head">
+          <div>
+            <h2>Signup growth</h2>
+            <p>All-time, by month</p>
+          </div>
+        </div>
+
+        <div class="growth-chart-wrap">
+          <svg id="growthChartSvg" class="growth-chart" viewBox="0 0 600 220" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div class="growth-chart-labels" id="growthChartLabels"></div>
+          <div class="growth-chart-empty" id="growthChartEmpty">
+            <i class="bx bx-line-chart"></i>
+            <span>Not enough signup data yet.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ACCOUNT BREAKDOWN ================= -->
+      <section class="dash-card reveal delay-2">
+        <div class="dash-card-head">
+          <div>
+            <h2>Account breakdown</h2>
+            <p>Students, teachers &amp; unspecified accounts</p>
+          </div>
+        </div>
+
+        <div class="breakdown-body">
+          <div class="breakdown-donut" id="breakdownDonut">
+            <div class="donut-hole">
+              <strong id="donutTotal">0</strong>
+              <span>users</span>
+            </div>
+          </div>
+
+          <div class="breakdown-legend" id="breakdownLegend"></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item active" href="dashboard.html">
+      <i class="bx bxs-dashboard"></i> Dashboard
+    </a>
+    <a class="bn-item" href="users.html">
+      <i class="bx bx-group"></i> Users
+    </a>
+    <a class="bn-item" href="tasks.html">
+      <i class="bx bx-task"></i> Tasks
+    </a>
+    <a class="bn-item" href="finance.html">
+      <i class="bx bx-wallet"></i> Finance
+    </a>
+    <a class="bn-item" href="reports-support.html">
+      <i class="bx bx-shield-alt-2"></i> Reports
+    </a>
+  </nav>
+
+  <!-- Admin dashboard logic -->
+  <script type="module" src="../js/admin/dashboard.js"></script>
+</body>
+</html>
