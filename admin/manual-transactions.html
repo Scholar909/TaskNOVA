@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA admin — manual transactions." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Manual Transactions — TaskNOVA Admin</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+<!-- Basic Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+<!-- Filled Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+<!-- Brand Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Admin Tasks & Requests stylesheet -->
+  <link rel="stylesheet" href="../css/admin/manual-transactions.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="dashboard.html" aria-label="TaskNOVA admin home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="brand-tag">Admin</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">A</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">Admin</span>
+        </div>
+      </div>
+
+      <nav class="menu-single-wrap">
+        <a href="dashboard.html" class="menu-single">
+          <i class="bx bxs-dashboard"></i> Dashboard
+        </a>
+      </nav>
+
+      <div class="menu-group" id="menuGroupUsers">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-group"></i> Users</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="users.html"><i class="bx bx-user-check"></i> User Management</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupTasks">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-task"></i> Tasks</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="tasks.html"><i class="bx bx-list-check"></i> Tasks &amp; Requests</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertising">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-megaphone"></i> Advertising</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group open" id="menuGroupFinance">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-wallet"></i> Finance</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="finance.html"><i class="bx bx-line-chart"></i> Finance</a>
+              <a href="manual-transactions.html" class="active"><i class="bx bx-transfer-alt"></i> Manual Transactions</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupReports">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-shield-alt-2"></i> Reports &amp; Support</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="reports-support.html"><i class="bx bx-support"></i> Reports &amp; Support</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdministration">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-cog"></i> Administration</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="settings.html"><i class="bx bx-slider-alt"></i> Settings</a>
+              <a href="admin-manual.html"><i class="bx bx-book-content"></i> Admin Manual</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Manual Transactions</h1>
+        <p>Approve manual deposits and make direct wallet adjustments.</p>
+      </div>
+
+      <!-- ================= TABS ================= -->
+      <div class="tnr-tabs reveal delay-1" id="tnrTabs" role="tablist">
+        <button class="tnr-tab active" type="button" role="tab" data-tab="deposits" aria-selected="true">
+          <i class="bx bx-hand-o-up"></i> Manual Deposits <span class="tab-count" id="countDeposits">–</span>
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="changes" aria-selected="false">
+          <i class="bx bx-wallet"></i> Manual Changes
+        </button>
+      </div>
+
+      <!-- ================= MANUAL DEPOSITS ================= -->
+      <section class="tnr-panel active" id="panel-deposits" data-panel="deposits">
+        <div class="panel-meta"><span id="metaDeposits">Loading manual deposits…</span></div>
+        <div class="card-list" id="listDeposits">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyDeposits" style="display:none;">
+          <i class="bx bx-inbox"></i><span>No manual deposits waiting for review.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreDeposits" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= MANUAL CHANGES ================= -->
+      <section class="tnr-panel" id="panel-changes" data-panel="changes">
+        <div class="mc-search-row">
+          <div class="mc-search-input-wrap">
+            <i class="bx bx-search"></i>
+            <input type="text" id="usernameInput" placeholder="Enter username…" autocomplete="off">
+          </div>
+          <button type="button" class="btn btn-primary" id="fetchUserBtn"><span class="btn-spinner"></span><i class="bx bx-search-alt"></i><span class="btn-label">Fetch</span></button>
+        </div>
+        <div class="mc-msg" id="mcSearchMsg" style="display:none;"></div>
+
+        <div class="mc-user-card" id="mcUserCard" style="display:none;">
+          <div class="mc-user-head">
+            <div class="mc-avatar" id="mcAvatar">A</div>
+            <div class="mc-user-info">
+              <strong id="mcFullName">—</strong>
+              <span id="mcUsername">—</span>
+            </div>
+          </div>
+          <div class="mc-wallet-grid">
+            <div class="mc-wallet-box">
+              <div class="mwb-label"><i class="bx bx-wallet"></i> Deposit Balance</div>
+              <div class="mwb-value" id="mcDepositValue">₦0.00</div>
+            </div>
+            <div class="mc-wallet-box">
+              <div class="mwb-label"><i class="bx bx-coin-stack"></i> Earned Balance</div>
+              <div class="mwb-value" id="mcEarnedValue">₦0.00</div>
+            </div>
+          </div>
+
+          <div class="tc-actions">
+            <button type="button" class="btn btn-success" id="incrementToggleBtn"><i class="bx bx-plus-circle"></i><span class="btn-label">Increment</span></button>
+            <button type="button" class="btn btn-danger" id="decrementToggleBtn"><i class="bx bx-minus-circle"></i><span class="btn-label">Decrement</span></button>
+            <button type="button" class="btn btn-share" id="transferToggleBtn"><i class="bx bx-transfer-alt"></i><span class="btn-label">Transfer</span></button>
+          </div>
+
+          <!-- INCREMENT slide-out -->
+          <div class="tc-decline-panel" id="incrementPanel"><div><div class="tc-decline-inner mc-form">
+            <label class="mc-field-label">Wallet</label>
+            <select id="incrementWallet">
+              <option value="deposit">Deposit Balance</option>
+              <option value="earned">Earned Balance</option>
+            </select>
+            <label class="mc-field-label">Amount</label>
+            <input type="number" id="incrementAmount" min="0" step="0.01" placeholder="0.00">
+            <label class="mc-field-label">Note <span>(optional — shown to the user)</span></label>
+            <input type="text" id="incrementNote" placeholder="e.g. Giveaway reward, correction…">
+            <div class="tc-actions">
+              <button type="button" class="btn btn-ghost" data-act="cancel-increment">Cancel</button>
+              <button type="button" class="btn btn-success" id="incrementSubmitBtn"><span class="btn-spinner"></span><i class="bx bx-plus-circle"></i><span class="btn-label">Add to Wallet</span></button>
+            </div>
+          </div></div></div>
+
+          <!-- DECREMENT slide-out -->
+          <div class="tc-decline-panel" id="decrementPanel"><div><div class="tc-decline-inner mc-form">
+            <label class="mc-field-label">Wallet</label>
+            <select id="decrementWallet">
+              <option value="deposit">Deposit Balance</option>
+              <option value="earned">Earned Balance</option>
+            </select>
+            <label class="mc-field-label">Amount</label>
+            <input type="number" id="decrementAmount" min="0" step="0.01" placeholder="0.00">
+            <label class="mc-field-label">Note <span>(optional — shown to the user)</span></label>
+            <input type="text" id="decrementNote" placeholder="e.g. Correction, chargeback…">
+            <p class="mc-hint">This can push the wallet negative — no floor is enforced.</p>
+            <div class="tc-actions">
+              <button type="button" class="btn btn-ghost" data-act="cancel-decrement">Cancel</button>
+              <button type="button" class="btn btn-danger" id="decrementSubmitBtn"><span class="btn-spinner"></span><i class="bx bx-minus-circle"></i><span class="btn-label">Deduct from Wallet</span></button>
+            </div>
+          </div></div></div>
+
+          <!-- TRANSFER slide-out -->
+          <div class="tc-decline-panel" id="transferPanel"><div><div class="tc-decline-inner mc-form">
+            <label class="mc-field-label">From wallet (this user)</label>
+            <select id="transferFromWallet">
+              <option value="deposit">Deposit Balance</option>
+              <option value="earned">Earned Balance</option>
+            </select>
+            <label class="mc-field-label">Recipient username</label>
+            <input type="text" id="transferToUsername" placeholder="Enter recipient's username…" autocomplete="off">
+            <label class="mc-field-label">To wallet (recipient)</label>
+            <select id="transferToWallet">
+              <option value="deposit">Deposit Balance</option>
+              <option value="earned">Earned Balance</option>
+            </select>
+            <label class="mc-field-label">Amount</label>
+            <input type="number" id="transferAmount" min="0" step="0.01" placeholder="0.00">
+            <label class="mc-field-label">Note <span>(optional — shown to both users)</span></label>
+            <input type="text" id="transferNote" placeholder="e.g. Reason for the transfer…">
+            <div class="tc-actions">
+              <button type="button" class="btn btn-ghost" data-act="cancel-transfer">Cancel</button>
+              <button type="button" class="btn btn-share" id="transferSubmitBtn"><span class="btn-spinner"></span><i class="bx bx-transfer-alt"></i><span class="btn-label">Send Transfer</span></button>
+            </div>
+          </div></div></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- =========================================================
+       TOAST
+       ========================================================= -->
+  <div class="toast" id="toast"><i class="bx bx-check-circle"></i><span id="toastMsg"></span></div>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="dashboard.html">
+      <i class="bx bxs-dashboard"></i> Dashboard
+    </a>
+    <a class="bn-item" href="users.html">
+      <i class="bx bx-group"></i> Users
+    </a>
+    <a class="bn-item" href="tasks.html">
+      <i class="bx bx-task"></i> Tasks
+    </a>
+    <a class="bn-item active" href="finance.html">
+      <i class="bx bx-wallet"></i> Finance
+    </a>
+    <a class="bn-item" href="reports-support.html">
+      <i class="bx bx-shield-alt-2"></i> Reports
+    </a>
+  </nav>
+
+  <!-- Admin tasks & requests logic -->
+  <script type="module" src="../js/admin/manual-transactions.js"></script>
+</body>
+</html>

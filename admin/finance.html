@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA admin — finance." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Finance — TaskNOVA Admin</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+<!-- Basic Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+<!-- Filled Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+<!-- Brand Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Admin Tasks & Requests stylesheet -->
+  <link rel="stylesheet" href="../css/admin/finance.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="dashboard.html" aria-label="TaskNOVA admin home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="brand-tag">Admin</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">A</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">Admin</span>
+        </div>
+      </div>
+
+      <nav class="menu-single-wrap">
+        <a href="dashboard.html" class="menu-single">
+          <i class="bx bxs-dashboard"></i> Dashboard
+        </a>
+      </nav>
+
+      <div class="menu-group" id="menuGroupUsers">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-group"></i> Users</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="users.html"><i class="bx bx-user-check"></i> User Management</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupTasks">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-task"></i> Tasks</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="tasks.html"><i class="bx bx-list-check"></i> Tasks &amp; Requests</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertising">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-megaphone"></i> Advertising</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group open" id="menuGroupFinance">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-wallet"></i> Finance</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="finance.html" class="active"><i class="bx bx-line-chart"></i> Finance</a>
+              <a href="manual-transactions.html"><i class="bx bx-transfer-alt"></i> Manual Transactions</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupReports">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-shield-alt-2"></i> Reports &amp; Support</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="reports-support.html"><i class="bx bx-support"></i> Reports &amp; Support</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdministration">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-cog"></i> Administration</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="settings.html"><i class="bx bx-slider-alt"></i> Settings</a>
+              <a href="admin-manual.html"><i class="bx bx-book-content"></i> Admin Manual</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Finance</h1>
+        <p>Monitor withdrawals, the platform ledger, and revenue.</p>
+      </div>
+
+      <!-- ================= TABS ================= -->
+      <div class="tnr-tabs reveal delay-1" id="tnrTabs" role="tablist">
+        <button class="tnr-tab active" type="button" role="tab" data-tab="withdrawals" aria-selected="true">
+          <i class="bx bx-upload"></i> Withdrawals <span class="tab-count" id="countWithdrawals">–</span>
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="transactions" aria-selected="false">
+          <i class="bx bx-list-ul"></i> Transactions
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="revenue" aria-selected="false">
+          <i class="bx bx-line-chart"></i> Revenue
+        </button>
+      </div>
+
+      <!-- ================= WITHDRAWALS ================= -->
+      <section class="tnr-panel active" id="panel-withdrawals" data-panel="withdrawals">
+        <div class="request-filter-row" id="withdrawFilterRow">
+          <button type="button" class="rf-chip active" data-wf="needs_attention">Needs Attention</button>
+          <button type="button" class="rf-chip" data-wf="pending">Pending</button>
+          <button type="button" class="rf-chip" data-wf="processing">Processing</button>
+          <button type="button" class="rf-chip" data-wf="sent">Sent</button>
+          <button type="button" class="rf-chip" data-wf="completed">Completed</button>
+          <button type="button" class="rf-chip" data-wf="rejected">Rejected</button>
+        </div>
+        <div class="panel-meta"><span id="metaWithdrawals">Loading withdrawal requests…</span></div>
+        <div class="card-list" id="listWithdrawals">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyWithdrawals" style="display:none;">
+          <i class="bx bx-check-double"></i><span>Nothing here.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreWithdrawals" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= TRANSACTIONS (platform ledger) ================= -->
+      <section class="tnr-panel" id="panel-transactions" data-panel="transactions">
+        <div class="ledger-note reveal">
+          <i class="bx bx-info-circle"></i>
+          <span>The platform's own ledger — every naira that actually became TaskNOVA revenue, with where it came from and why. This is separate from any individual user's personal transaction history.</span>
+        </div>
+        <div class="panel-meta"><span id="metaTransactions">Loading ledger entries…</span></div>
+        <div class="card-list" id="listTransactions">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyTransactions" style="display:none;">
+          <i class="bx bx-receipt"></i><span>No ledger entries yet.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreTransactions" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= REVENUE ================= -->
+      <section class="tnr-panel" id="panel-revenue" data-panel="revenue">
+        <div class="revenue-total-card reveal" id="revenueTotalCard">
+          <div class="rtc-label">Total Platform Revenue</div>
+          <div class="rtc-value" id="revenueTotalValue">₦0.00</div>
+          <div class="revenue-bar" id="revenueBar"></div>
+        </div>
+        <div class="revenue-grid" id="revenueGrid">
+          <div class="revenue-card" data-cat="task_fee">
+            <div class="rc-icon"><i class="bx bx-briefcase"></i></div>
+            <div class="rc-label">Task Fees</div>
+            <div class="rc-value" id="revTaskFee">₦0.00</div>
+            <div class="rc-pct" id="revTaskFeePct">0%</div>
+          </div>
+          <div class="revenue-card" data-cat="ad_revenue">
+            <div class="rc-icon"><i class="bx bx-megaphone"></i></div>
+            <div class="rc-label">Ad Revenue</div>
+            <div class="rc-value" id="revAdRevenue">₦0.00</div>
+            <div class="rc-pct" id="revAdRevenuePct">0%</div>
+          </div>
+          <div class="revenue-card" data-cat="banner_revenue">
+            <div class="rc-icon"><i class="bx bx-carousel"></i></div>
+            <div class="rc-label">Banner Revenue</div>
+            <div class="rc-value" id="revBannerRevenue">₦0.00</div>
+            <div class="rc-pct" id="revBannerRevenuePct">0%</div>
+          </div>
+          <div class="revenue-card" data-cat="manual_deposit">
+            <div class="rc-icon"><i class="bx bx-hand-o-up"></i></div>
+            <div class="rc-label">Manual Deposit Fees</div>
+            <div class="rc-value" id="revManualDeposit">₦0.00</div>
+            <div class="rc-pct" id="revManualDepositPct">0%</div>
+          </div>
+          <div class="revenue-card" data-cat="other">
+            <div class="rc-icon"><i class="bx bx-dots-horizontal-rounded"></i></div>
+            <div class="rc-label">Other</div>
+            <div class="rc-value" id="revOther">₦0.00</div>
+            <div class="rc-pct" id="revOtherPct">0%</div>
+          </div>
+        </div>
+        <div class="panel-meta" id="metaRevenue" style="margin-top:14px;">Loading revenue totals…</div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- =========================================================
+       TOAST
+       ========================================================= -->
+  <div class="toast" id="toast"><i class="bx bx-check-circle"></i><span id="toastMsg"></span></div>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="dashboard.html">
+      <i class="bx bxs-dashboard"></i> Dashboard
+    </a>
+    <a class="bn-item" href="users.html">
+      <i class="bx bx-group"></i> Users
+    </a>
+    <a class="bn-item" href="tasks.html">
+      <i class="bx bx-task"></i> Tasks
+    </a>
+    <a class="bn-item active" href="finance.html">
+      <i class="bx bx-wallet"></i> Finance
+    </a>
+    <a class="bn-item" href="reports-support.html">
+      <i class="bx bx-shield-alt-2"></i> Reports
+    </a>
+  </nav>
+
+  <!-- Admin tasks & requests logic -->
+  <script type="module" src="../js/admin/finance.js"></script>
+</body>
+</html>

@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="TaskNOVA admin — tasks & requests." />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Tasks &amp; Requests — TaskNOVA Admin</title>
+  <link
+  rel="icon"
+  type="image/png"
+  href="../assets/icons/tasknova-icon.png"
+>
+  <link
+  rel="apple-touch-icon"
+  href="../assets/icons/tasknova-icon.png"
+>
+
+  <!-- Boxicons Free -->
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+<!-- Basic Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/basic/boxicons.min.css" rel="stylesheet">
+<!-- Filled Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/filled/boxicons-filled.min.css" rel="stylesheet">
+<!-- Brand Icons -->
+<link href="https://cdn.boxicons.com/3.0.8/fonts/brands/boxicons-brands.min.css" rel="stylesheet">
+
+  <!-- Poppins -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Admin Tasks & Requests stylesheet -->
+  <link rel="stylesheet" href="../css/admin/tasks.css">
+</head>
+<body>
+
+  <!-- =========================================================
+       HEADER
+       ========================================================= -->
+  <header class="site-header" id="siteHeader">
+    <div class="container">
+      <div class="nav">
+        <a class="brand" href="dashboard.html" aria-label="TaskNOVA admin home">
+          <img id="brandLogo"
+               src="../assets/images/dark_full.png"
+               data-light="../assets/images/light_full.png"
+               data-dark="../assets/images/dark_full.png"
+               alt="TaskNOVA">
+          <span class="brand-tag">Admin</span>
+        </a>
+
+        <div class="nav-actions">
+          <button class="icon-btn" id="menuToggle" type="button" aria-label="Open menu">
+            <i class="bx bx-menu"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       MOBILE / MAIN MENU DRAWER
+       ========================================================= -->
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
+    <div class="mobile-menu-backdrop" id="menuBackdrop"></div>
+    <aside class="mobile-panel">
+      <div class="menu-top">
+        <img src="../assets/images/dark_full.png"
+             data-light="../assets/images/light_full.png"
+             data-dark="../assets/images/dark_full.png"
+             alt="TaskNOVA">
+        <button class="menu-close" id="menuClose" type="button" aria-label="Close menu">
+          <i class="bx bx-x"></i>
+        </button>
+      </div>
+
+      <div class="menu-user">
+        <div class="mu-avatar" id="menuUserAvatar">A</div>
+        <div class="mu-info">
+          <strong id="menuUserName">Loading…</strong>
+          <span id="menuUserType">Admin</span>
+        </div>
+      </div>
+
+      <nav class="menu-single-wrap">
+        <a href="dashboard.html" class="menu-single">
+          <i class="bx bxs-dashboard"></i> Dashboard
+        </a>
+      </nav>
+
+      <div class="menu-group" id="menuGroupUsers">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-group"></i> Users</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="users.html"><i class="bx bx-user-check"></i> User Management</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group open" id="menuGroupTasks">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-task"></i> Tasks</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="tasks.html" class="active"><i class="bx bx-list-check"></i> Tasks &amp; Requests</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdvertising">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-megaphone"></i> Advertising</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="advertisements.html"><i class="bx bx-grid-alt"></i> Advertisements</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupFinance">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-wallet"></i> Finance</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="finance.html"><i class="bx bx-line-chart"></i> Finance</a>
+              <a href="manual-transactions.html"><i class="bx bx-transfer-alt"></i> Manual Transactions</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupReports">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-shield-alt-2"></i> Reports &amp; Support</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="reports-support.html"><i class="bx bx-support"></i> Reports &amp; Support</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-group" id="menuGroupAdministration">
+        <button type="button" class="menu-group-label">
+          <span><i class="bx bx-cog"></i> Administration</span> <i class="bx bx-chevron-down chevron"></i>
+        </button>
+        <div class="menu-group-body">
+          <div>
+            <nav>
+              <a href="settings.html"><i class="bx bx-slider-alt"></i> Settings</a>
+              <a href="admin-manual.html"><i class="bx bx-book-content"></i> Admin Manual</a>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-divider"></div>
+
+      <div class="menu-theme-row">
+        <span>Dark theme</span>
+        <button class="theme-switch" id="themeSwitch" type="button" aria-label="Toggle theme">
+          <span class="ts-knob"><i class="bx bx-moon" id="themeIcon"></i></span>
+        </button>
+      </div>
+
+      <div class="menu-spacer"></div>
+
+      <button class="logout-btn" id="logoutBtn" type="button">
+        <i class="bx bx-log-out"></i> Logout
+      </button>
+    </aside>
+  </div>
+
+  <!-- =========================================================
+       MAIN CONTENT
+       ========================================================= -->
+  <main>
+    <div class="container">
+
+      <!-- Page heading -->
+      <div class="greeting reveal">
+        <h1>Tasks &amp; Requests</h1>
+        <p>Review, approve, and manage everything posted to TaskNOVA.</p>
+      </div>
+
+      <!-- ================= TABS ================= -->
+      <div class="tnr-tabs reveal delay-1" id="tnrTabs" role="tablist">
+        <button class="tnr-tab active" type="button" role="tab" data-tab="pending" aria-selected="true">
+          <i class="bx bx-time-five"></i> Pending <span class="tab-count" id="countPending">–</span>
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="active" aria-selected="false">
+          <i class="bx bx-check-shield"></i> Active <span class="tab-count" id="countActive">–</span>
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="declined" aria-selected="false">
+          <i class="bx bx-x-circle"></i> Declined <span class="tab-count" id="countDeclined">–</span>
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="completed" aria-selected="false">
+          <i class="bx bx-flag-checkered"></i> Completed
+        </button>
+        <button class="tnr-tab" type="button" role="tab" data-tab="requests" aria-selected="false">
+          <i class="bx bx-message-square-detail"></i> Task Requests <span class="tab-count" id="countRequests">–</span>
+        </button>
+      </div>
+
+      <!-- ================= PENDING TASKS ================= -->
+      <section class="tnr-panel active" id="panel-pending" data-panel="pending">
+        <div class="panel-meta"><span id="metaPending">Loading pending tasks…</span></div>
+        <div class="card-list" id="listPending">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyPending" style="display:none;">
+          <i class="bx bx-inbox"></i><span>No tasks waiting for review.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMorePending" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= ACTIVE TASKS ================= -->
+      <section class="tnr-panel" id="panel-active" data-panel="active">
+        <div class="panel-meta"><span id="metaActive">Loading active tasks…</span></div>
+        <div class="card-list" id="listActive">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyActive" style="display:none;">
+          <i class="bx bx-task-x"></i><span>No active tasks right now.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreActive" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= DECLINED TASKS ================= -->
+      <section class="tnr-panel" id="panel-declined" data-panel="declined">
+        <div class="panel-meta"><span id="metaDeclined">Loading declined tasks…</span></div>
+        <div class="card-list" id="listDeclined">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyDeclined" style="display:none;">
+          <i class="bx bx-check-double"></i><span>No declined tasks.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreDeclined" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= COMPLETED TASKS ================= -->
+      <section class="tnr-panel" id="panel-completed" data-panel="completed">
+        <div class="panel-meta"><span id="metaCompleted">Loading completed tasks…</span></div>
+        <div class="card-list" id="listCompleted">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyCompleted" style="display:none;">
+          <i class="bx bx-flag-checkered"></i><span>No completed tasks yet.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreCompleted" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+      <!-- ================= TASK REQUESTS ================= -->
+      <section class="tnr-panel" id="panel-requests" data-panel="requests">
+        <div class="request-filter-row">
+          <button type="button" class="rf-chip active" data-rf="pending_review">Pending</button>
+          <button type="button" class="rf-chip" data-rf="resolved">Resolved</button>
+        </div>
+        <div class="panel-meta"><span id="metaRequests">Loading task requests…</span></div>
+        <div class="card-list" id="listRequests">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyRequests" style="display:none;">
+          <i class="bx bx-message-square-x"></i><span>Nothing here.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreRequests" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- =========================================================
+       TOAST
+       ========================================================= -->
+  <div class="toast" id="toast"><i class="bx bx-check-circle"></i><span id="toastMsg"></span></div>
+
+  <!-- =========================================================
+       BOTTOM NAVIGATION (mobile)
+       ========================================================= -->
+  <nav class="bottom-nav">
+    <a class="bn-item" href="dashboard.html">
+      <i class="bx bxs-dashboard"></i> Dashboard
+    </a>
+    <a class="bn-item" href="users.html">
+      <i class="bx bx-group"></i> Users
+    </a>
+    <a class="bn-item active" href="tasks.html">
+      <i class="bx bx-task"></i> Tasks
+    </a>
+    <a class="bn-item" href="finance.html">
+      <i class="bx bx-wallet"></i> Finance
+    </a>
+    <a class="bn-item" href="reports-support.html">
+      <i class="bx bx-shield-alt-2"></i> Reports
+    </a>
+  </nav>
+
+  <!-- Admin tasks & requests logic -->
+  <script type="module" src="../js/admin/tasks.js"></script>
+</body>
+</html>
