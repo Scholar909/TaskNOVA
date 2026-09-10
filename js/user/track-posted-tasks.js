@@ -560,6 +560,7 @@ function renderTaskDetail(taskId) {
 
     container.innerHTML = `
       ${baseInfo}
+      <div class="status-info-note"><i class="bx bx-undo"></i> Your balance for this task was already refunded to your Deposit Balance when it was declined.</div>
       <div class="td-section">
         <h3>Decline history</h3>
         ${history.length ? `
@@ -574,10 +575,10 @@ function renderTaskDetail(taskId) {
            </div>`
       }
       <div class="action-row">
-        <button type="button" class="action-btn danger" id="deleteBtn-${taskId}"><span class="action-spinner"></span><i class="bx bx-trash"></i> Delete &amp; Refund</button>
+        <button type="button" class="action-btn danger" id="deleteBtn-${taskId}"><span class="action-spinner"></span><i class="bx bx-trash"></i> Delete</button>
       </div>
     `;
-    wireDelete(taskId, true);
+    wireDelete(taskId, false);
     return;
   }
 
@@ -866,13 +867,15 @@ function wireDelete(taskId, hasRefund) {
     }
 
     let refund = 0;
-    if (task.status === "pending_review" || task.status === "declined") {
+    if (task.status === "pending_review") {
       refund = task.totalCost || 0;
     } else if (task.status === "active" || task.status === "completed") {
       refund = Math.max(0, total - filled) * (task.amountPerWorker || 0);
     }
-    // draft and expired always preview as 0 — drafts were never charged,
-    // and expired tasks were already refunded automatically when they expired.
+    // draft tasks were never charged, declined tasks were already refunded
+    // in full at the moment admin declined them, and expired tasks were
+    // already refunded automatically when they expired — none of those
+    // get another refund here.
 
     const confirmMsg = refund > 0
       ? `Delete this task? ${formatNaira(refund)} for unused slots will be refunded to your Deposit Balance. This can't be undone.`
@@ -892,9 +895,9 @@ function wireDelete(taskId, hasRefund) {
         const data = taskSnap.data();
 
         let refundAmount = 0;
-        if (data.status === "draft") {
-          refundAmount = 0;
-        } else if (data.status === "pending_review" || data.status === "declined") {
+        if (data.status === "draft" || data.status === "declined") {
+          refundAmount = 0; // declined tasks were already refunded in full at decline time
+        } else if (data.status === "pending_review") {
           refundAmount = data.totalCost || 0; // never went live — nothing was spent
         } else if (data.status === "active" || data.status === "completed") {
           const remaining = Math.max(0, (data.workersRequired ?? 0) - (data.slotsFilled ?? 0));
@@ -1092,19 +1095,28 @@ onAuthStateChanged(auth, (user) => {
      whether or not the employer ever opens the app again. Nothing
      in this page can substitute for that.
 
-   - declineHistory isn't written anywhere yet — that's the
-     not-yet-built Admin Task Approval flow's job (admin declines
-     a task pre-launch, appends a reason to declineHistory). Until
-     that exists, the Declined tab will only show tasks if you add
-     that field manually for testing.
+   - declineHistory is written by the admin Tasks & Requests page
+     when admin declines a task pre-launch (it also refunds the
+     employer's full totalCost immediately at that same moment —
+     see the note below).
 
-   - Refund math on delete: pending_review/declined tasks refund
-     their full totalCost (never went live, nothing spent). Active/
-     completed tasks refund only (workersRequired - slotsFilled) *
-     amountPerWorker — slots already filled (pending or approved)
-     are treated as spent and non-refundable, matching the
-     platform's non-refundable stance once money has actually gone
-     toward real work.
+   - Refund math on delete: pending_review tasks refund their full
+     totalCost (never went live, nothing spent). Declined tasks
+     refund nothing on delete — admin's decline action already
+     credits the full totalCost back the moment it declines the
+     task, so refunding again here would double-pay the employer.
+     Active/completed tasks refund only (workersRequired -
+     slotsFilled) * amountPerWorker — slots already filled (pending
+     or approved) are treated as spent and non-refundable, matching
+     the platform's non-refundable stance once money has actually
+     gone toward real work. The full rule, in one place: a refund
+     only ever happens (a) when admin declines a task, or (b) when
+     a task — pending_review or active — is deleted before it's
+     completed (by the employer here, or by admin acting in their
+     place from the admin panel, which uses this exact same math).
+     Declined and completed/expired tasks never refund again on
+     delete, since each of those was already settled at the moment
+     it happened.
 
    - Expired tasks: an active task that sits for 30 days without
      all slots being filled needs a scheduled Cloud Function (same
