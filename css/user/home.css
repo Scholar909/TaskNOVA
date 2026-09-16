@@ -18,8 +18,6 @@
   --danger: #ff4d5e;
   --success: #17c992;
   --warning: #ffb020;
-  --veltrix: #7c3aed;
-  --veltrix-soft: rgba(124, 58, 237, .10);
   --shadow: 0 22px 70px rgba(20, 70, 130, .13);
   --shadow-soft: 0 12px 40px rgba(20, 70, 130, .09);
   --radius-xl: 32px;
@@ -45,8 +43,6 @@ body.dark {
   --danger: #ff6b78;
   --success: #2fe0a6;
   --warning: #ffc247;
-  --veltrix: #a978ff;
-  --veltrix-soft: rgba(169, 120, 255, .14);
   --shadow: 0 26px 90px rgba(0, 0, 0, .42);
   --shadow-soft: 0 15px 50px rgba(0, 0, 0, .30);
 }
@@ -387,107 +383,6 @@ img { display: block; max-width: 100%; }
 .wallet-action-btn i {
   font-size: 1.25rem;
   color: var(--primary);
-}
-
-/* ---------- VELTRIX WIDGET SECTION ---------- */
-.veltrix-section { margin-bottom: 28px; }
-
-.veltrix-card {
-  position: relative;
-  padding: 22px 20px;
-  border: 1px solid color-mix(in srgb, var(--veltrix) 25%, var(--line));
-  border-radius: var(--radius-lg);
-  background:
-    linear-gradient(160deg, var(--veltrix-soft), transparent 60%),
-    var(--surface);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: var(--shadow-soft);
-  overflow: hidden;
-  max-width: 100%;
-}
-
-.veltrix-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
-}
-
-.veltrix-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.veltrix-title .vt-icon {
-  width: 38px; height: 38px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 11px;
-  color: #fff;
-  background: linear-gradient(135deg, #7c3aed, #b478ff);
-  font-size: 1.15rem;
-}
-
-.veltrix-title strong { display: block; font-size: .95rem; }
-.veltrix-title span { display: block; font-size: .74rem; color: var(--text-soft); }
-
-.hosted-tag {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 12px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--veltrix-soft);
-  color: var(--veltrix);
-  font-size: .66rem;
-  font-weight: 700;
-  letter-spacing: .02em;
-  white-space: nowrap;
-}
-
-.veltrix-card p.vt-desc {
-  margin: 10px 0 16px;
-  color: var(--text-soft);
-  font-size: .8rem;
-  max-width: 480px;
-}
-
-.veltrix-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.btn-veltrix {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 46px;
-  padding: 0 18px;
-  border: none;
-  border-radius: 13px;
-  background: linear-gradient(135deg, #7c3aed, #a978ff);
-  color: #fff;
-  font-size: .87rem;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 12px 26px rgba(124, 58, 237, .28);
-  transition: transform .3s var(--ease), box-shadow .3s var(--ease);
-}
-
-.btn-veltrix:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(124, 58, 237, .36); }
-
-.vt-source-note {
-  margin-top: 12px;
-  font-size: .68rem;
-  color: var(--text-soft);
 }
 
 /* ---------- QUICK ACTIONS ---------- */
@@ -895,7 +790,7 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 99px;
   width: 100%;
   min-height: 48px;
   border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
@@ -937,7 +832,6 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
   .floating-ad { bottom: 120px; }
   .support-fab { bottom: 48px; }
   .wallet-section .container,
-  .veltrix-section .container,
   .transactions-section .container { max-width: 720px; margin-inline: auto; }
 }
 
@@ -950,7 +844,6 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
   .greeting { padding-top: 100px; }
   .wallet-actions { gap: 8px; }
   .wallet-action-btn { padding: 12px 4px; font-size: .7rem; }
-  .veltrix-actions .btn-veltrix { width: 100%; justify-content: center; }
 }
 
 @media (max-width: 390px) {
