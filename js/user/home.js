@@ -1,7 +1,18 @@
 /* =========================================================
    TASKNOVA — HOME PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied:
+   1. Tawk.to visitor auto-fill — once the signed-in user's name/
+      email/username are known, they're pushed to Tawk so any
+      chat started from this page (via the floating support
+      button) arrives pre-filled.
+   2. accountType / institutionAbbr removed from the menu
+      subtitle — TaskNOVA no longer distinguishes Student/
+      Teacher/None or tracks location, per the site-wide removal
+      instruction. Shows the username instead.
    ========================================================= */
+import { callEdgeFunction } from "../supabase.js";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {
@@ -71,8 +82,6 @@ const TX_ICONS = {
   withdrawal: "bx-upload",
   earning: "bx-trending-up",
   task_payment: "bx-briefcase",
-  airtime: "bx-mobile-alt",
-  data: "bx-wifi",
   swap: "bx-transfer-alt",
   referral: "bx-user-plus",
   refund: "bx-undo",
@@ -227,15 +236,13 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -290,7 +297,6 @@ function makeDraggable(el, storageKey, defaults) {
     const rect = el.getBoundingClientRect();
     localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
 
-    // Prevent the click-through-navigation firing right after a real drag
     if (moved) {
       el._suppressClick = true;
       setTimeout(() => { el._suppressClick = false; }, 50);
@@ -324,7 +330,6 @@ if (floatingAd) {
 }
 
 if (supportFab) {
-  // Default position: directly beneath the floating ad
   const supportDefaultTop = window.innerHeight - 160;
   const supportDefaultLeft = window.innerWidth - 96;
   makeDraggable(supportFab, "tasknova-float-support-pos", { left: supportDefaultLeft, top: supportDefaultTop });
@@ -343,6 +348,39 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   floatingAd.style.display = "none";
 });
 
+/* ===========================================================
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled instead of asking
+   for them again.
+   =========================================================== */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+
 /* ---------------------------------------------------------
    AUTH GUARD + LIVE WALLET DATA
    --------------------------------------------------------- */
@@ -358,6 +396,7 @@ const greetingName = document.getElementById("greetingName");
 
 let unsubscribeUserDoc = null;
 let unsubscribeTx = null;
+let tawkSynced = false;
 
 onAuthStateChanged(auth, (user) => {
   if (!user) {
@@ -380,7 +419,7 @@ onAuthStateChanged(auth, (user) => {
     const firstName = (data.fullName || "there").split(" ")[0];
     if (greetingName) greetingName.textContent = firstName;
     if (userNameEl) userNameEl.textContent = data.fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = (data.fullName || "T").trim().charAt(0).toUpperCase();
 
     const deposit = data.wallet?.deposit ?? 0;
@@ -402,13 +441,15 @@ onAuthStateChanged(auth, (user) => {
     } else {
       outstandingBanner.classList.remove("show");
     }
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("Wallet listener error:", err);
   });
 
-  // Recent transactions — reads users/{uid}/transactions, newest 10 first.
-  // Each doc is expected to have: type, direction ('credit'|'debit'|'pending'),
-  // amount, title, status (optional), createdAt (Firestore Timestamp).
   const txQuery = query(
     collection(db, "users", user.uid, "transactions"),
     orderBy("createdAt", "desc"),
@@ -433,8 +474,6 @@ onAuthStateChanged(auth, (user) => {
     renderTransactions([]);
   });
 
-  /// Lightweight unread check — existence only (limit 1), not a count.
-  // Shows/hides the header dot, nothing more.
   const unreadCheckQuery = query(
     collection(db, "users", user.uid, "notifications"),
     where("read", "==", false),
