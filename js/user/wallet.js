@@ -1,6 +1,21 @@
 /* =========================================================
-   TASKNOVA — PROFILE PAGE LOGIC
+   TASKNOVA — WALLET PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Paystack replaced with Flutterwave throughout — inline
+      checkout, bank-account resolve, and withdrawal transfers.
+   2. Every secret-key-requiring call now goes through a Supabase
+      Edge Function (js/supabase.js) instead of a Firebase Cloud
+      Function — none of these functions are deployed yet, see
+      the BACKEND NOTES at the bottom.
+   3. Bank list for withdrawals is now fetched live from Flutterwave
+      (via Supabase) instead of a hardcoded Paystack-code list,
+      since the two processors use entirely different bank codes.
+   4. accountType/institutionAbbr display removed from the menu
+      subtitle, replaced with the username, per the site-wide
+      removal of Student/Teacher/None + institution.
+   5. Tawk.to visitor auto-fill added (same block as home.js).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -16,13 +31,13 @@ import {
   runTransaction,
   collection,
   where,
-  addDoc,
   setDoc,
   query,
   orderBy,
   limit,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { callEdgeFunction } from "../supabase.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -158,15 +173,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -276,19 +293,68 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
 });
 
 /* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled instead of asking
+   for them again. Same block as home.js — copy it onto every
+   other page's auth guard as they're reworked.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
+
+/* ---------------------------------------------------------
    CONFIG — replace these with your real values before launch
    --------------------------------------------------------- */
-const PAYSTACK_PUBLIC_KEY = "pk_test_REPLACE_WITH_YOUR_PAYSTACK_PUBLIC_KEY";
+const FLUTTERWAVE_PUBLIC_KEY = "FLWPUBK-ef9ca50755f30d40b5d428f8d48d3cde-X";
 
-// Cloud Function endpoints (secret keys live server-side only — never here).
-// See the notes at the end of this file for what each one needs to do.
-const CLOUD_FN = {
-  verifyDeposit: "https://REGION-PROJECT.cloudfunctions.net/verifyPaystackDeposit",
-  resolveAccount: "https://REGION-PROJECT.cloudfunctions.net/resolveBankAccount",
-  requestWithdrawal: "https://REGION-PROJECT.cloudfunctions.net/requestWithdrawal",
-  createVirtualAccount: "https://REGION-PROJECT.cloudfunctions.net/createFlutterwaveVirtualAccount",
-  cancelVirtualAccount: "https://REGION-PROJECT.cloudfunctions.net/cancelFlutterwaveVirtualAccount"
+// Supabase Edge Function names — secret keys (Flutterwave secret key,
+// etc.) live inside these functions' server-side environment only,
+// never here. See the BACKEND NOTES at the end of this file for what
+// each one needs to do; none of them are deployed yet.
+const EDGE_FN = {
+  verifyDeposit: "verify-flutterwave-deposit",
+  listBanks: "list-banks",
+  resolveAccount: "resolve-bank-account",
+  requestWithdrawal: "request-withdrawal",
+  createVirtualAccount: "create-flutterwave-virtual-account",
+  cancelVirtualAccount: "cancel-flutterwave-virtual-account"
 };
+
+// Flutterwave's inline checkout script — injected here instead of in
+// wallet.html's <head> so this page works without an HTML edit.
+(function loadFlutterwaveScript() {
+  if (document.querySelector('script[data-flutterwave-inline]')) return;
+  const script = document.createElement("script");
+  script.src = "https://checkout.flutterwave.com/v3.js";
+  script.dataset.flutterwaveInline = "true";
+  script.async = true;
+  document.head.appendChild(script);
+})();
 
 const nairaFormat = new Intl.NumberFormat("en-NG", {
   style: "currency",
@@ -330,52 +396,49 @@ function setBtnLoading(btn, isLoading) {
 }
 
 /* ---------------------------------------------------------
-   NIGERIAN BANKS (Paystack bank codes)
-   Static list so the page works offline / instantly. Refresh
-   periodically from GET https://api.paystack.co/bank via your
-   backend if Paystack adds/renames banks.
+   NIGERIAN BANK NAMES (for the manual-transfer sender-bank field
+   only — that field just records what the user typed for admin's
+   review, so it needs no bank code, unlike the withdrawal bank
+   select below).
    --------------------------------------------------------- */
-const NIGERIAN_BANKS = [
-  { name: "Access Bank", code: "044" },
-  { name: "Citibank Nigeria", code: "023" },
-  { name: "Ecobank Nigeria", code: "050" },
-  { name: "Fidelity Bank", code: "070" },
-  { name: "First Bank of Nigeria", code: "011" },
-  { name: "First City Monument Bank (FCMB)", code: "214" },
-  { name: "Globus Bank", code: "00103" },
-  { name: "Guaranty Trust Bank (GTBank)", code: "058" },
-  { name: "Heritage Bank", code: "030" },
-  { name: "Jaiz Bank", code: "301" },
-  { name: "Keystone Bank", code: "082" },
-  { name: "Kuda Microfinance Bank", code: "50211" },
-  { name: "Moniepoint MFB", code: "50515" },
-  { name: "Opay (Paycom)", code: "999992" },
-  { name: "Palmpay", code: "999991" },
-  { name: "Parallex Bank", code: "104" },
-  { name: "Polaris Bank", code: "076" },
-  { name: "Premium Trust Bank", code: "105" },
-  { name: "Providus Bank", code: "101" },
-  { name: "Stanbic IBTC Bank", code: "221" },
-  { name: "Standard Chartered Bank", code: "068" },
-  { name: "Sterling Bank", code: "232" },
-  { name: "SunTrust Bank", code: "100" },
-  { name: "Titan Trust Bank", code: "102" },
-  { name: "Union Bank of Nigeria", code: "032" },
-  { name: "United Bank for Africa (UBA)", code: "033" },
-  { name: "Unity Bank", code: "215" },
-  { name: "Wema Bank / ALAT", code: "035" },
-  { name: "Zenith Bank", code: "057" }
+const NIGERIAN_BANK_NAMES = [
+  "Access Bank", "Citibank Nigeria", "Ecobank Nigeria", "Fidelity Bank",
+  "First Bank of Nigeria", "First City Monument Bank (FCMB)", "Globus Bank",
+  "Guaranty Trust Bank (GTBank)", "Heritage Bank", "Jaiz Bank", "Keystone Bank",
+  "Kuda Microfinance Bank", "Moniepoint MFB", "Opay (Paycom)", "Palmpay",
+  "Parallex Bank", "Polaris Bank", "Premium Trust Bank", "Providus Bank",
+  "Stanbic IBTC Bank", "Standard Chartered Bank", "Sterling Bank",
+  "SunTrust Bank", "Titan Trust Bank", "Union Bank of Nigeria",
+  "United Bank for Africa (UBA)", "Unity Bank", "Wema Bank / ALAT", "Zenith Bank"
 ];
 
 const bankSelect = document.getElementById("bankSelect");
 const bankCodeInput = document.getElementById("bankCode");
 
-NIGERIAN_BANKS.forEach((bank) => {
-  const opt = document.createElement("option");
-  opt.value = bank.code;
-  opt.textContent = bank.name;
-  bankSelect.appendChild(opt);
-});
+// The withdrawal bank list has to come from Flutterwave live (via Supabase)
+// rather than a hardcoded list — Flutterwave's bank codes are completely
+// different from Paystack's, so any static Paystack-code list here would
+// silently send withdrawals to the wrong bank. Called once a signed-in
+// user is available (see onAuthStateChanged below).
+async function loadWithdrawalBanks() {
+  bankSelect.innerHTML = `<option value="" disabled selected>Loading banks…</option>`;
+  bankSelect.disabled = true;
+  try {
+    const idToken = await currentUser.getIdToken();
+    const banks = await callEdgeFunction(EDGE_FN.listBanks, {}, idToken);
+    bankSelect.innerHTML = `<option value="" disabled selected>Select your bank</option>`;
+    (banks || []).forEach((bank) => {
+      const opt = document.createElement("option");
+      opt.value = bank.code;
+      opt.textContent = bank.name;
+      bankSelect.appendChild(opt);
+    });
+    bankSelect.disabled = false;
+  } catch (err) {
+    console.error("Load banks error:", err);
+    bankSelect.innerHTML = `<option value="" disabled selected>Bank list unavailable — refresh to retry</option>`;
+  }
+}
 
 bankSelect.addEventListener("change", () => {
   bankCodeInput.value = bankSelect.value;
@@ -440,6 +503,7 @@ const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
 
 let currentUser = null;
+let currentUserData = { fullName: "", username: "" };
 let currentWallet = { deposit: 0, earned: 0 };
 let currentOutstanding = 0;
 
@@ -457,6 +521,7 @@ onAuthStateChanged(auth, (user) => {
   }
 
   currentUser = user;
+  loadWithdrawalBanks();
 
   if (unsubscribeUserDoc) unsubscribeUserDoc();
   if (unsubscribeTx) unsubscribeTx();
@@ -468,8 +533,13 @@ onAuthStateChanged(auth, (user) => {
     const fullName = data.fullName || "TaskNOVA User";
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
+    currentUserData.fullName = data.fullName || "";
+    currentUserData.username = data.username || "";
+
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
     currentWallet.deposit = data.wallet?.deposit ?? 0;
@@ -492,6 +562,11 @@ onAuthStateChanged(auth, (user) => {
 
     swapAvailableNote.textContent = `Available: ${formatNaira(currentWallet.earned)}`;
     updateSwapPreview();
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("Wallet listener error:", err);
   });
@@ -583,7 +658,7 @@ const methodAutomaticEl = document.getElementById("methodAutomatic");
 const methodVirtualEl = document.getElementById("methodVirtual");
 const methodManualEl = document.getElementById("methodManual");
 
-/* ===== METHOD 1: INSTANT AUTOMATIC — Paystack Inline Checkout ===== */
+/* ===== METHOD 1: INSTANT AUTOMATIC — Flutterwave Inline Checkout ===== */
 const depositAmountInput = document.getElementById("depositAmount");
 const depositChips = document.getElementById("depositChips");
 const depositMsg = document.getElementById("depositMsg");
@@ -621,48 +696,53 @@ depositForm.addEventListener("submit", (e) => {
 
   if (!currentUser) return;
 
-  if (typeof PaystackPop === "undefined") {
+  if (typeof FlutterwaveCheckout === "undefined") {
     showPanelMsg(depositMsg, "error", "Payment popup failed to load. Check your connection and try again.");
     return;
   }
 
   setBtnLoading(depositSubmit, true);
 
-  const handler = PaystackPop.setup({
-    key: PAYSTACK_PUBLIC_KEY,
-    email: currentUser.email,
-    amount: Math.round(amount * 100), // Paystack expects kobo
+  // Flutterwave needs a unique reference generated up front (unlike
+  // Paystack, which generates its own) — this is what verification is
+  // keyed on server-side, so it has to be unpredictable and unique.
+  const txRef = `tasknova-${currentUser.uid}-${Date.now()}`;
+
+  FlutterwaveCheckout({
+    public_key: FLUTTERWAVE_PUBLIC_KEY,
+    tx_ref: txRef,
+    amount: amount,
     currency: "NGN",
-    metadata: { uid: currentUser.uid, purpose: "wallet_deposit" },
-    callback: function (response) {
-      // Payment succeeded at Paystack's end. The wallet is NOT credited yet —
-      // it's credited only after our backend verifies this reference server-side.
-      verifyDepositOnServer(response.reference);
+    payment_options: "card,banktransfer,ussd",
+    customer: {
+      email: currentUser.email,
+      name: currentUserData.fullName || currentUser.email
     },
-    onClose: function () {
+    customizations: {
+      title: "TaskNOVA Wallet Deposit",
+      description: "Add funds to your TaskNOVA wallet"
+    },
+    meta: { uid: currentUser.uid, purpose: "wallet_deposit" },
+    callback: function (response) {
+      // Payment succeeded at Flutterwave's end. The wallet is NOT credited
+      // yet — it's credited only after our backend verifies this reference
+      // server-side.
+      verifyDepositOnServer(txRef);
+      if (typeof response?.close === "function") response.close();
+    },
+    onclose: function () {
       setBtnLoading(depositSubmit, false);
     }
   });
-
-  handler.openIframe();
 });
 
-async function verifyDepositOnServer(reference) {
+async function verifyDepositOnServer(txRef) {
   try {
     const idToken = await currentUser.getIdToken();
-    const res = await fetch(CLOUD_FN.verifyDeposit, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + idToken
-      },
-      body: JSON.stringify({ reference })
-    });
+    const result = await callEdgeFunction(EDGE_FN.verifyDeposit, { tx_ref: txRef }, idToken);
 
-    const result = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(result.error || "Verification failed.");
+    if (!result?.success) {
+      throw new Error(result?.error || "Verification failed.");
     }
 
     showPanelMsg(depositMsg, "success", "Payment verified! Your wallet has been credited.");
@@ -671,7 +751,7 @@ async function verifyDepositOnServer(reference) {
     setTimeout(() => { window.location.href = "transactions.html"; }, 1500);
   } catch (err) {
     console.error("Deposit verification error:", err);
-    showPanelMsg(depositMsg, "error", "We received your payment but couldn't confirm it automatically. Contact support with your reference: " + reference);
+    showPanelMsg(depositMsg, "error", "We received your payment but couldn't confirm it automatically. Contact support with your reference: " + txRef);
   } finally {
     setBtnLoading(depositSubmit, false);
   }
@@ -778,17 +858,7 @@ virtualProceedBtn.addEventListener("click", async () => {
 
   try {
     const idToken = await currentUser.getIdToken();
-    const res = await fetch(CLOUD_FN.createVirtualAccount, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + idToken
-      },
-      body: JSON.stringify({ amount })
-    });
-
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Couldn't create a virtual account. Please try again.");
+    const result = await callEdgeFunction(EDGE_FN.createVirtualAccount, { amount }, idToken);
 
     vmReference = result.reference;
     vmSettled = false;
@@ -829,14 +899,7 @@ virtualCancelBtn.addEventListener("click", async () => {
   if (referenceToCancel && currentUser) {
     try {
       const idToken = await currentUser.getIdToken();
-      await fetch(CLOUD_FN.cancelVirtualAccount, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + idToken
-        },
-        body: JSON.stringify({ reference: referenceToCancel })
-      });
+      await callEdgeFunction(EDGE_FN.cancelVirtualAccount, { reference: referenceToCancel }, idToken);
     } catch (err) {
       console.error("Cancel virtual account error:", err);
     }
@@ -863,10 +926,10 @@ const MANUAL_TRANSFER_FEE = 20;
 let manualDestinationBank = null; // admin-configured, loaded from Firestore
 let manualPendingAmount = 0;
 
-NIGERIAN_BANKS.forEach((bank) => {
+NIGERIAN_BANK_NAMES.forEach((name) => {
   const opt = document.createElement("option");
-  opt.value = bank.name;
-  opt.textContent = bank.name;
+  opt.value = name;
+  opt.textContent = name;
   mtSenderBank.appendChild(opt);
 });
 
@@ -1106,21 +1169,13 @@ accountNumberInput.addEventListener("input", () => {
   }, 600);
 });
 
-// Resolving a bank account number to a name requires Paystack's secret key,
-// so this calls a Cloud Function proxy rather than Paystack directly.
+// Resolving a bank account number to a name requires Flutterwave's secret
+// key, so this calls a Supabase Edge Function proxy rather than Flutterwave
+// directly.
 async function resolveBankAccount(bankCode, accountNumber) {
   if (!currentUser) return null;
   const idToken = await currentUser.getIdToken();
-  const res = await fetch(CLOUD_FN.resolveAccount, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + idToken
-    },
-    body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber })
-  });
-  const result = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(result.error || "Could not resolve account.");
+  const result = await callEdgeFunction(EDGE_FN.resolveAccount, { bank_code: bankCode, account_number: accountNumber }, idToken);
   return result.account_name || null;
 }
 
@@ -1159,26 +1214,17 @@ withdrawForm.addEventListener("submit", async (e) => {
 
   try {
     // The client never edits wallet balances directly for withdrawals.
-    // It only creates a request; a Cloud Function verifies the Earned Balance,
-    // deducts it in a transaction, and initiates the Paystack transfer.
+    // It only creates a request; a Supabase Edge Function verifies the
+    // Earned Balance, deducts it in a Firestore transaction, and
+    // initiates the Flutterwave transfer.
     const idToken = await currentUser.getIdToken();
-    const res = await fetch(CLOUD_FN.requestWithdrawal, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + idToken
-      },
-      body: JSON.stringify({
-        amount,
-        bank_code: bankCode,
-        bank_name: bankName,
-        account_number: accountNumber,
-        account_name: resolvedAccountName
-      })
-    });
-
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Withdrawal request failed.");
+    await callEdgeFunction(EDGE_FN.requestWithdrawal, {
+      amount,
+      bank_code: bankCode,
+      bank_name: bankName,
+      account_number: accountNumber,
+      account_name: resolvedAccountName
+    }, idToken);
 
     showPanelMsg(withdrawMsg, "success", "Withdrawal requested! You'll receive it within 24–48 hours (sooner once automatic transfers are enabled).");
     withdrawForm.reset();
@@ -1289,39 +1335,64 @@ swapForm.addEventListener("submit", async (e) => {
 /* ===========================================================
    BACKEND NOTES (read before going live)
    ===========================================================
-   This file intentionally never touches a Paystack secret key.
-   Three Cloud Functions need to exist for the page to fully work:
+   This file intentionally never touches a Flutterwave secret key.
+   Every server-side call below is a Supabase Edge Function (see
+   js/supabase.js) — none of these are deployed yet. Each one needs
+   to verify the caller's Firebase ID token (sent as a Bearer header
+   by callEdgeFunction) before doing anything privileged; Firebase
+   Admin SDK can run inside a Deno/Supabase Edge Function for this,
+   or the token can be checked manually against Google's JWKS.
 
-   1. verifyPaystackDeposit(reference)
-      - Verify: GET https://api.paystack.co/transaction/verify/:reference
-        with "Authorization: Bearer <PAYSTACK_SECRET_KEY>"
-      - If status is "success" and amount matches what you expect,
-        credit the user's wallet.deposit using the Outstanding
+   1. verify-flutterwave-deposit({ tx_ref })
+      - Verify: GET https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=...
+        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>"
+      - If status is "successful" and the amount/currency match what's
+        expected, credit the user's wallet.deposit using the Outstanding
         Priority Rule (clear outstanding first, remainder to deposit),
-        then write a "transactions" doc (type: "deposit", direction: "credit").
-      - Reject if the reference was already processed (idempotency).
+        increment users/{uid}.lifetimeDeposited by the full deposited
+        amount (this is a separate, never-decreasing counter — refer.js's
+        referral-reward feature depends on it), then write a
+        "transactions" doc (type: "deposit", direction: "credit").
+      - Reject if tx_ref was already processed (idempotency) — Flutterwave
+        can call your webhook AND the client can call this function for the
+        same payment, so this function and the webhook (see METHOD 2) must
+        both check for an already-settled record before crediting twice.
 
-   2. resolveBankAccount(bank_code, account_number)
-      - Call: GET https://api.paystack.co/bank/resolve?account_number=...&bank_code=...
-        with "Authorization: Bearer <PAYSTACK_SECRET_KEY>"
-      - Return { account_name } on success, or { error } per Paystack's
-        response (matches the docs' 400/401/502 style error shape).
+   2. list-banks()
+      - Call: GET https://api.flutterwave.com/v3/banks/NG
+        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>"
+      - Return the bank list as [{ name, code }], mapped from Flutterwave's
+        response shape. This is what populates the withdrawal bank select —
+        without it deployed, that dropdown just shows "Bank list unavailable."
+      - Cheap to cache for a few hours (bank lists rarely change) rather than
+        hitting Flutterwave on every page load, if Supabase's own caching or
+        a small KV table is available.
 
-   3. requestWithdrawal(amount, bank_code, bank_name, account_number, account_name)
+   3. resolve-bank-account({ bank_code, account_number })
+      - Call: POST https://api.flutterwave.com/v3/accounts/resolve
+        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>",
+        body { account_number, account_bank: bank_code }
+      - Return { account_name } on success, or { error } on failure.
+
+   4. request-withdrawal({ amount, bank_code, bank_name, account_number, account_name })
       - Re-check the caller's Earned Balance server-side (never trust the client).
       - Enforce minimum ₦500 and the 5% fee.
       - Deduct wallet.earned in a Firestore transaction, write a
         "transactions" doc (type: "withdrawal", direction: "debit", status: "pending").
-      - Call Paystack Transfer Recipient + Transfer endpoints to disburse
-        automatically; until that's wired up, an admin can fulfill the
-        request manually within 24–48 hours per the current fallback plan.
+      - Call Flutterwave's Transfers endpoint (POST https://api.flutterwave.com/v3/transfers)
+        to disburse automatically; until that's wired up, an admin can fulfill
+        the request manually within 24–48 hours per the current fallback plan
+        (see admin/finance.html's Withdrawals tab — it already expects this
+        exact transactions doc shape).
 
-   Update PAYSTACK_PUBLIC_KEY and the CLOUD_FN URLs above once these exist.
+   Update FLUTTERWAVE_PUBLIC_KEY above (already set) and deploy each of the
+   four functions above with `supabase functions deploy <name>` — the EDGE_FN
+   object's values are their expected slugs.
 
    ===========================================================
    METHOD 2 — MANUAL AUTOMATIC (Flutterwave virtual account)
    ===========================================================
-   4. createFlutterwaveVirtualAccount(amount)
+   5. create-flutterwave-virtual-account({ amount })
       - Call Flutterwave's "Create a Virtual Account" endpoint for a
         one-time (not permanent) NGN account, scoped to this exact amount.
       - Create a Firestore doc at virtualAccountPayments/{reference}
@@ -1332,19 +1403,26 @@ swapForm.addEventListener("submit", async (e) => {
         virtual account itself (the client's countdown is cosmetic only;
         the real deadline must be enforced server-side too).
 
-   5. Flutterwave webhook handler (separate HTTPS function, not called by
-      this client directly)
-      - Verify the webhook signature against your Flutterwave secret hash.
+   6. Flutterwave webhook handler (a separate Supabase Edge Function with its
+      own public URL, configured directly in Flutterwave's dashboard — not
+      called by this client at all)
+      - Verify the webhook's verif-hash header against your Flutterwave
+        secret hash before trusting the payload.
       - On a successful charge for a known reference: credit
-        wallet.deposit (Outstanding Priority Rule, same as Paystack),
-        write a "transactions" doc (type: "deposit", direction: "credit"),
+        wallet.deposit (Outstanding Priority Rule, same as Method 1),
+        increment users/{uid}.lifetimeDeposited by the deposited amount
+        (same counter Method 1 updates — see its note above), write a
+        "transactions" doc (type: "deposit", direction: "credit"),
         and update virtualAccountPayments/{reference}.status to "successful".
-      - On failure, or a background job when "now > expiresAt" and the
-        doc is still "pending": set status to "failed" or "expired".
+      - On failure, or a scheduled Supabase function when "now > expiresAt"
+        and the doc is still "pending": set status to "failed" or "expired".
       - This status field is the only thing the client listens to — it
         never polls Flutterwave itself and never sees a secret key.
+      - Webhooks aren't set up yet at all (flagged separately) — this
+        handler doesn't exist yet, so right now nothing actually confirms a
+        virtual-account payment automatically.
 
-   6. cancelFlutterwaveVirtualAccount(reference)
+   7. cancel-flutterwave-virtual-account({ reference })
       - Best-effort: mark virtualAccountPayments/{reference}.status as
         "cancelled" (only if it's still "pending" — never overwrite a
         result that already landed) so a late webhook can't resurrect it.
@@ -1354,7 +1432,7 @@ swapForm.addEventListener("submit", async (e) => {
    ===========================================================
    METHOD 3 — MANUAL TRANSFER (admin-approved)
    ===========================================================
-   No Cloud Function is required for the user-facing half — the client
+   No Edge Function is required for the user-facing half — the client
    writes directly to two Firestore collections (same lightweight pattern
    as Post Task / Swap), protected by Firestore rules that only allow a
    user to create (never update/delete) their own manualDeposits + pending
@@ -1364,17 +1442,19 @@ swapForm.addEventListener("submit", async (e) => {
      destinationBank, senderBank, senderName, status: "pending_review",
      createdAt }
    - users/{uid}/transactions/{id}: mirrors it for the Recent Wallet
-     Activity list and transactions.html (direction: "pending").
+     Activity list and transactions.html (direction: "pending"), storing
+     manualDepositId pointing back to the manualDeposits doc (its own id
+     is auto-generated, not shared with the deposit doc's id).
 
-   What an admin panel still needs to do, server-side, on Approve/Reject:
-   - Approve: in one transaction, credit wallet.deposit by `amount` (NOT
-     totalExpected — the ₦20 is a transfer fee, not part of what's owed
-     to the user), set manualDeposits/{id}.status to "approved", and
-     update the mirrored transactions doc to status: "successful",
-     direction: "credit".
-   - Reject: set both statuses to "rejected" and leave the wallet
-     untouched.
-   - Populate settings/manualTransferBank { bankName, accountNumber,
-     accountName } from the admin side — the deposit page reads it live
-     and shows "not set up yet" until it exists.
+   Approve/Reject on this collection are already handled entirely by
+   admin/manual-transactions.html's Manual Deposits tab (client-side
+   Firestore writes, no backend function). That Approve action needs
+   one more field added to what it already writes: increment
+   users/{uid}.lifetimeDeposited by `amount` alongside the existing
+   wallet.deposit credit — it doesn't yet, which is a gap flagged in
+   refer.js's own notes (referral rewards depend on this counter
+   being accurate across every deposit path, not just Methods 1 & 2
+   here). settings/manualTransferBank { bankName, accountNumber,
+   accountName } is populated from admin/settings.html and read live
+   by this page.
    =========================================================== */

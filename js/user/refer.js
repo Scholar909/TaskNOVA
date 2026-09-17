@@ -1,6 +1,24 @@
 /* =========================================================
    TASKNOVA — REFER A FRIEND PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Referral tracking no longer depends on a Cloud Function.
+      "Total referrals" now comes straight from a query against the
+      users collection itself (where referralCodeUsed == my
+      username) — no separate subcollection needs to be populated
+      by anything server-side. The one-time ₦100 reward is detected
+      and paid by THIS page's own client-side code the moment it
+      sees a qualifying referral, guarded by a Firestore transaction
+      + a security-rule-enforced marker doc so it can't be triggered
+      twice or abused. Full detail in the BACKEND NOTE at the end —
+      it now doubles as a Firestore Security Rules note, since that
+      rule is what actually keeps this safe without a function.
+   2. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   3. Tawk.to visitor auto-fill added (same block as home.js/wallet.js).
+   4. SKRED_ADVERTISE_LINK renamed to DEFAULT_BANNER_LINK (same fix
+      already applied elsewhere — it never actually pointed to Skred).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -13,11 +31,13 @@ import {
   getFirestore,
   doc,
   onSnapshot,
+  runTransaction,
   collection,
   query,
   where,
   limit,
-  orderBy
+  orderBy,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -154,15 +174,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -270,6 +292,41 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   e.stopPropagation();
   floatingAd.style.display = "none";
 });
+
+/* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   home.js/wallet.js — copy it onto every other page's auth guard
+   as they're reworked.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
 
 /* ---------------------------------------------------------
    FORMAT HELPERS
@@ -382,7 +439,7 @@ function renderReferredList(rows) {
   referredList.innerHTML = rows.map((ref) => {
     const initial = (ref.username || "?").trim().charAt(0).toUpperCase();
     const statusClass = ref.rewarded ? "rewarded" : "pending";
-    const statusLabel = ref.rewarded ? "Rewarded ₦100" : "Pending deposit";
+    const statusLabel = ref.rewarded ? "+" + formatNaira(100) : "+" + formatNaira(0);
 
     return `
       <div class="ref-row">
@@ -399,14 +456,159 @@ function renderReferredList(rows) {
 /* ---------------------------------------------------------
    AUTH GUARD + LIVE DATA
    Referral code = the user's own username (matches what new
-   users are asked to enter as "Referral code" at signup).
-   Reads users/{uid}/referrals — one doc per person referred.
-   Expected shape per doc: { username, rewarded, joinedAt }.
-   See the note at the end of this file for how that
-   subcollection gets populated.
+   users are asked to enter as "Referral code" at signup, stored
+   on the new user's own doc as referralCodeUsed).
+
+   No Cloud Function involved. Two onSnapshot listeners, both
+   scoped so Firestore rules can allow them safely:
+   1. A query against the top-level `users` collection itself —
+      where("referralCodeUsed","==", my username) — this IS the
+      referred-people list; nothing separate needs to be
+      populated anywhere for it to exist.
+   2. My own users/{uid}/referralRewards subcollection — a
+      marker doc per referral I've already been paid ₦100 for,
+      written by this page's own client-side code (see
+      processReward below) and never anywhere else.
    --------------------------------------------------------- */
 let unsubscribeUserDoc = null;
-let unsubscribeReferrals = null;
+let unsubscribeReferredUsers = null;
+let unsubscribeRewards = null;
+
+let currentUid = "";
+let subscribedUsername = "";
+let referredUsersCache = [];
+let rewardedUidSet = new Set();
+const rewardAttempted = new Set(); // in-memory guard against redundant transaction calls this session
+
+function recomputeAndRender() {
+  let total = 0;
+  let rewarded = 0;
+  let earned = 0;
+
+  const rows = referredUsersCache.map((ref) => {
+    total += 1;
+    const isRewarded = rewardedUidSet.has(ref.uid);
+    if (isRewarded) { rewarded += 1; earned += 100; }
+    return {
+      username: ref.username,
+      rewarded: isRewarded,
+      joinedDate: ref.joinedDate
+    };
+  });
+
+  statTotal.textContent = String(total);
+  statTotal.classList.remove("skeleton");
+  statRewarded.textContent = String(rewarded);
+  statRewarded.classList.remove("skeleton");
+  statEarned.textContent = formatNaira(earned);
+  statEarned.classList.remove("skeleton");
+
+  renderReferredList(rows);
+}
+
+/* ---------------------------------------------------------
+   Pays the one-time ₦100 reward for a qualifying referral.
+   Safe against double-payment two ways: the in-memory
+   rewardAttempted guard (avoids redundant attempts within this
+   page load) AND a fresh read of the marker doc inside the
+   transaction itself (the real guarantee — enforced further by
+   a Firestore Security Rule, see the BACKEND NOTE at the end).
+   --------------------------------------------------------- */
+async function processReward(referredUser) {
+  if (rewardAttempted.has(referredUser.uid)) return;
+  rewardAttempted.add(referredUser.uid);
+
+  const rewardRef = doc(db, "users", currentUid, "referralRewards", referredUser.uid);
+  const myUserRef = doc(db, "users", currentUid);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const rewardSnap = await transaction.get(rewardRef);
+      if (rewardSnap.exists()) return; // already paid — nothing to do
+
+      const mySnap = await transaction.get(myUserRef);
+      if (!mySnap.exists()) return;
+      const currentEarned = mySnap.data().wallet?.earned ?? 0;
+
+      transaction.set(rewardRef, {
+        username: referredUser.username,
+        rewardedAt: serverTimestamp()
+      });
+      transaction.update(myUserRef, { "wallet.earned": currentEarned + 100 });
+
+      const txRef = doc(collection(db, "users", currentUid, "transactions"));
+      transaction.set(txRef, {
+        type: "referral",
+        direction: "credit",
+        title: `Referral reward — @${referredUser.username} deposited ₦500+`,
+        amount: 100,
+        status: "successful",
+        createdAt: serverTimestamp()
+      });
+    });
+  } catch (err) {
+    // Most likely a permissions rejection (rules doing their job) or a
+    // race with another tab — either way, not worth surfacing to the user.
+    console.error("Referral reward error:", err);
+    rewardAttempted.delete(referredUser.uid); // allow a retry on the next snapshot
+  }
+}
+
+function subscribeToReferredUsers(username) {
+  if (unsubscribeReferredUsers) unsubscribeReferredUsers();
+
+  const referredQuery = query(
+    collection(db, "users"),
+    where("referralCodeUsed", "==", username),
+    orderBy("createdAt", "desc"),
+    limit(200)
+  );
+
+  unsubscribeReferredUsers = onSnapshot(referredQuery, (snap) => {
+    referredUsersCache = snap.docs.map((d) => {
+      const data = d.data();
+      // lifetimeDeposited is the running, never-decreasing total set by
+      // the deposit-verification Edge Function (see wallet.js) — falls
+      // back to the current spendable balance if that field isn't being
+      // written yet, so the feature still does *something* meaningful
+      // in the meantime rather than silently never firing.
+      const depositSignal = data.lifetimeDeposited ?? data.wallet?.deposit ?? 0;
+
+      return {
+        uid: d.id,
+        username: data.username || "",
+        joinedDate: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+        qualifies: depositSignal >= 500
+      };
+    });
+
+    recomputeAndRender();
+
+    referredUsersCache
+      .filter((ref) => ref.qualifies && !rewardedUidSet.has(ref.uid))
+      .forEach((ref) => processReward(ref));
+  }, (err) => {
+    console.error("Referred users listener error:", err);
+    referredUsersCache = [];
+    recomputeAndRender();
+  });
+}
+
+function subscribeToRewards() {
+  if (unsubscribeRewards) unsubscribeRewards();
+
+  unsubscribeRewards = onSnapshot(
+    collection(db, "users", currentUid, "referralRewards"),
+    (snap) => {
+      rewardedUidSet = new Set(snap.docs.map((d) => d.id));
+      snap.docs.forEach((d) => rewardAttempted.add(d.id));
+      recomputeAndRender();
+    },
+    (err) => {
+      console.error("Referral rewards listener error:", err);
+    }
+  );
+}
 
 onAuthStateChanged(auth, (user) => {
   if (!user) {
@@ -418,8 +620,10 @@ onAuthStateChanged(auth, (user) => {
     return;
   }
 
+  currentUid = user.uid;
+
   if (unsubscribeUserDoc) unsubscribeUserDoc();
-  if (unsubscribeReferrals) unsubscribeReferrals();
+  subscribeToRewards();
 
   unsubscribeUserDoc = onSnapshot(doc(db, "users", user.uid), (snap) => {
     if (!snap.exists()) return;
@@ -429,7 +633,9 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
     currentUsername = data.username || "";
@@ -440,45 +646,18 @@ onAuthStateChanged(auth, (user) => {
     referralCodeEl.textContent = currentUsername || "—";
     referralCodeEl.classList.remove("skeleton");
     referralLinkInput.value = currentReferralLink || "Set up your account to get a link";
+
+    if (currentUsername && currentUsername !== subscribedUsername) {
+      subscribedUsername = currentUsername;
+      subscribeToReferredUsers(currentUsername);
+    }
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("User doc listener error:", err);
-  });
-
-  const refQuery = query(
-    collection(db, "users", user.uid, "referrals"),
-    orderBy("joinedAt", "desc")
-  );
-
-  unsubscribeReferrals = onSnapshot(refQuery, (snap) => {
-    let total = 0;
-    let rewarded = 0;
-    let earned = 0;
-
-    const rows = snap.docs.map((d) => {
-      const data = d.data();
-      total += 1;
-      if (data.rewarded) {
-        rewarded += 1;
-        earned += 100;
-      }
-      return {
-        username: data.username || "",
-        rewarded: !!data.rewarded,
-        joinedDate: data.joinedAt?.toDate ? data.joinedAt.toDate() : null
-      };
-    });
-
-    statTotal.textContent = String(total);
-    statTotal.classList.remove("skeleton");
-    statRewarded.textContent = String(rewarded);
-    statRewarded.classList.remove("skeleton");
-    statEarned.textContent = formatNaira(earned);
-    statEarned.classList.remove("skeleton");
-
-    renderReferredList(rows);
-  }, (err) => {
-    console.error("Referrals listener error:", err);
-    renderReferredList([]);
   });
 
   // Lightweight unread check — existence only (limit 1), not a count.
@@ -496,25 +675,70 @@ onAuthStateChanged(auth, (user) => {
 });
 
 /* ===========================================================
-   BACKEND NOTE
+   BACKEND NOTE — Firestore Security Rules (no Cloud Function)
    ===========================================================
-   This page only reads users/{uid}/referrals — it never writes
-   to it, since a new user can't safely write into a stranger's
-   subcollection under normal Firestore rules. That subcollection
-   should be populated by a Cloud Function triggered on new user
-   creation:
+   This whole feature runs on plain client reads/writes — the
+   safety net is entirely in firestore.rules, not a function.
+   Three things the rules need to enforce, none of which exist
+   yet (add these to whatever rules file the project already has):
 
-   1. On signup, if referralCodeUsed is set, look up the user
-      whose username matches it.
-   2. If found, create a doc at
-      users/{referrerUid}/referrals/{newUserUid} with:
-        { username: <new user's username>, rewarded: false, joinedAt: serverTimestamp() }
-   3. When that new user's first deposit of >= ₦500 is verified
-      (in the deposit-verification Cloud Function), check whether
-      their referrals doc is still unrewarded, then:
-        - set rewarded: true on that doc
-        - credit the referrer's wallet.earned by 100
-        - write a "referral" transaction doc for the referrer
-      Skip all of this if the doc is already rewarded (one-time
-      reward per referral, per the doc's rules).
+   1. Let any signed-in user query the `users` collection filtered
+      to referralCodeUsed == <their own username>. A `list` query
+      like that returns full documents for every match, not just
+      specific fields — the client SDK has no field-masking — so
+      this does expose full profile docs (name, wallet balances,
+      etc.) of anyone you've referred, to you. That's an accepted
+      trade-off for going Cloud-Function-free; tighten it later
+      with a slimmer public-profile doc if it ever matters, but
+      that reintroduces something that has to keep two docs in
+      sync, which is exactly the complexity being avoided here.
+
+   2. users/{referrerUid}/referralRewards/{referredUid} — allow a
+      user to CREATE (never update/delete) a doc here only when
+      ALL of these hold:
+        - request.auth.uid == referrerUid (only I can write my own
+          reward markers)
+        - the referenced users/{referredUid} doc has
+          referralCodeUsed == the caller's own username (get() the
+          caller's own users/{referrerUid} doc to read that) — i.e.
+          you can only mark a reward for someone who actually used
+          your code
+        - get(/databases/$(database)/documents/users/$(referredUid)).data.lifetimeDeposited >= 500
+          (or wallet.deposit >= 500 while lifetimeDeposited isn't
+          wired up everywhere yet — see point 4 below)
+        - the doc doesn't already exist (rules can check
+          `!exists(...)` on the path being written, though in
+          practice the transaction's own read already handles this;
+          the rule is the backstop against someone skipping the
+          transaction and writing directly)
+
+   3. users/{referrerUid} — allow updating ONLY wallet.earned, and
+      only when the new value equals the old value + exactly 100,
+      and only in the same request/batch as a valid referralRewards
+      create per rule 2 (Firestore rules can inspect other writes in
+      the same transaction via `request.resource` on each path) —
+      this is what stops a user from just calling
+      `updateDoc(myUserRef, {'wallet.earned': 999999})` directly,
+      which would otherwise be sitting right next to a legitimate
+      write path.
+
+   4. lifetimeDeposited must actually be written for this to work      as intended. Right now NOTHING increments it — wallet.js's
+      (still undeployed) verify-flutterwave-deposit and
+      create-flutterwave-virtual-account Edge Functions need to
+      bump it on every successful deposit, and admin's
+      manual-transactions.js Manual Deposits Approve action needs
+      the same (currently only touches wallet.deposit). Until all
+      three are updated, this page falls back to checking the
+      current wallet.deposit balance instead (see depositSignal
+      above) — functional, but NOT one-time-safe the way the spec
+      wants (a referred friend who deposits ₦500, spends it, then
+      deposits ₦500 again would currently re-qualify under the
+      fallback, since wallet.deposit isn't cumulative). Wiring up
+      lifetimeDeposited everywhere closes that gap properly.
+
+   5. The referred-users query (referralCodeUsed == + orderBy
+      createdAt) needs a Firestore composite index on the `users`
+      collection for those two fields — Firestore will show the
+      exact index-creation link the first time this query actually
+      runs against real data.
    =========================================================== */
