@@ -349,6 +349,30 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
 });
 
 /* ===========================================================
+   VELTRIX DATA & AIRTIME WIDGET
+   The widget is Veltrix's own hosted checkout — it never touches
+   TaskNOVA's Firestore or wallet, and never needs the Veltrix
+   Secret API Key (that key is B2B-API-only and must stay
+   server-side; the embeddable widget only needs the public
+   partner ID, which is safe in frontend code).
+   =========================================================== */
+const VELTRIX_PARTNER_ID = "536ba438-bfc9-4af7-9ef6-bf0103691ab8";
+
+(function loadVeltrixWidget() {
+  if (document.querySelector('script[data-veltrix-widget]')) return; // already injected
+  const script = document.createElement("script");
+  script.src = "https://veltrix.com.ng/widget/veltrix.js";
+  script.dataset.partner = VELTRIX_PARTNER_ID;
+  script.dataset.veltrixWidget = "true";
+  script.async = true;
+  document.head.appendChild(script);
+})();
+
+// The widget auto-binds itself to any element carrying the
+// data-veltrix-open attribute (home.html's "Buy Now" button already
+// has it), including ones added after the script loads.
+
+/* ===========================================================
    TAWK.TO VISITOR AUTO-FILL
    Pushes the signed-in user's name/email/username to Tawk so any
    chat opened from this page arrives pre-filled instead of asking

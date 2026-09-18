@@ -1,6 +1,23 @@
 /* =========================================================
    TASKNOVA — TRANSACTION HISTORY PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. The "Other" filter chip queried where("type","=="," other")
+      literally, so any real (but uncategorized) type — the new
+      admin_adjustment/transfer/task_payout types introduced by
+      the admin rework — showed under "All" via the display
+      fallback but never matched "Other"'s own query. Fixed to be
+      a genuine catch-all (see the "Other" filter note below).
+   2. TX_META gained entries for admin_adjustment, transfer, and
+      task_payout so they get proper icons/labels everywhere, not
+      just the generic "Other" dots icon.
+   3. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   4. Tawk.to visitor auto-fill added (same block as every other
+      reworked page).
+   5. SKRED_ADVERTISE_LINK renamed to DEFAULT_BANNER_LINK (same
+      fix already applied elsewhere).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -156,15 +173,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -274,6 +293,40 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
 });
 
 /* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   every other reworked page.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
+
+/* ---------------------------------------------------------
    FORMAT HELPERS
    --------------------------------------------------------- */
 const nairaFormat = new Intl.NumberFormat("en-NG", {
@@ -321,11 +374,14 @@ const TX_META = {
   deposit: { icon: "bx-download", label: "Deposit" },
   withdrawal: { icon: "bx-upload", label: "Withdrawal" },
   task_payment: { icon: "bx-briefcase", label: "Task Payment" },
+  task_payout: { icon: "bx-briefcase", label: "Task Payout" },
   ad_payment: { icon: "bx-megaphone", label: "Advertisement Payment" },
   referral: { icon: "bx-user-plus", label: "Referral Reward" },
   airtime: { icon: "bx-mobile-alt", label: "Airtime Purchase" },
   data: { icon: "bx-wifi", label: "Data Purchase" },
   swap: { icon: "bx-transfer-alt", label: "Swap" },
+  transfer: { icon: "bx-shuffle", label: "Transfer" },
+  admin_adjustment: { icon: "bx-slider-alt", label: "Admin Adjustment" },
   refund: { icon: "bx-undo", label: "Refund" },
   decline_expense: { icon: "bx-x-circle", label: "Wrongful Decline Expense" },
   unlock_fee: { icon: "bx-lock-open-alt", label: "Unlock Fee" },
@@ -357,6 +413,17 @@ const loadMoreBtn = document.getElementById("loadMoreBtn");
 const filterScroll = document.getElementById("filterScroll");
 const totalInValue = document.getElementById("totalInValue");
 const totalOutValue = document.getElementById("totalOutValue");
+
+// The actual set of type values every OTHER filter chip owns, read
+// straight from the DOM rather than hardcoded — whatever chip markup
+// transactions.html already has is the source of truth. "Other" then
+// becomes a genuine catch-all (see fetchPage below) for any type not
+// claimed by one of these, instead of only matching a literal type
+// value of "other" — which is what silently hid admin_adjustment/
+// transfer/task_payout transactions from the Other tab before.
+const dedicatedChipTypes = Array.from(filterScroll.querySelectorAll(".filter-chip"))
+  .map((c) => c.dataset.filter)
+  .filter((v) => v && v !== "all" && v !== "other");
 
 const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
@@ -461,10 +528,26 @@ function updateSummary() {
 /* ---------------------------------------------------------
    FETCH (paginated, filterable)
    users/{uid}/transactions — ordered newest first.
-   Filtering by type requires a composite index on
-   (type asc, createdAt desc); Firestore will prompt you with
-   a direct link to create it the first time this query runs.
+   Filtering by a specific type requires a composite index on
+   (type asc, createdAt desc); Firestore will prompt you with a
+   direct link to create it the first time that query runs.
    --------------------------------------------------------- */
+function toTxRow(d) {
+  const data = d.data();
+  return {
+    id: d.id,
+    title: data.title || null,
+    type: data.type || "other",
+    direction: data.direction || "debit",
+    amount: data.amount || 0,
+    status: data.status || "",
+    balanceType: data.balanceType || "",
+    description: data.description || "",
+    reference: data.reference || "",
+    date: data.createdAt?.toDate ? data.createdAt.toDate() : null
+  };
+}
+
 async function fetchPage(reset = false) {
   if (!currentUser || isLoading) return;
   isLoading = true;
@@ -480,38 +563,54 @@ async function fetchPage(reset = false) {
 
   try {
     const baseRef = collection(db, "users", currentUser.uid, "transactions");
-    const constraints = [];
 
-    if (activeFilter !== "all") {
-      constraints.push(where("type", "==", activeFilter));
-    }
-    constraints.push(orderBy("createdAt", "desc"));
-    if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
-    constraints.push(limit(PAGE_SIZE));
+    if (activeFilter === "other") {
+      // "Other" has no native Firestore query — there are already 11
+      // dedicated chip types (more than Firestore's not-in element cap
+      // ever reliably supports, and that number only grows over time),
+      // so this paginates the plain, unfiltered stream and discards
+      // anything that belongs to a dedicated chip client-side instead.
+      // A single "page" of visible Other results can take more than one
+      // Firestore read round if Other entries are sparse — capped at a
+      // few rounds per click so a mostly-empty Other bucket can't burn
+      // through a large read budget in one tap.
+      let collected = 0;
+      let rounds = 0;
+      while (collected < PAGE_SIZE && hasMore && rounds < 5) {
+        rounds++;
+        const constraints = [orderBy("createdAt", "desc")];
+        if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
+        constraints.push(limit(PAGE_SIZE));
 
-    const snap = await getDocs(query(baseRef, ...constraints));
+        const snap = await getDocs(query(baseRef, ...constraints));
+        if (snap.empty) { hasMore = false; break; }
 
-    if (snap.empty) {
-      hasMore = false;
-    } else {
-      lastVisibleDoc = snap.docs[snap.docs.length - 1];
-      hasMore = snap.docs.length === PAGE_SIZE;
+        lastVisibleDoc = snap.docs[snap.docs.length - 1];
+        hasMore = snap.docs.length === PAGE_SIZE;
 
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        allLoadedTx.push({
-          id: d.id,
-          title: data.title || null,
-          type: data.type || "other",
-          direction: data.direction || "debit",
-          amount: data.amount || 0,
-          status: data.status || "",
-          balanceType: data.balanceType || "",
-          description: data.description || "",
-          reference: data.reference || "",
-          date: data.createdAt?.toDate ? data.createdAt.toDate() : null
+        snap.docs.forEach((d) => {
+          const row = toTxRow(d);
+          if (!dedicatedChipTypes.includes(row.type)) {
+            allLoadedTx.push(row);
+            collected++;
+          }
         });
-      });
+      }
+    } else {
+      const constraints = [];
+      if (activeFilter !== "all") constraints.push(where("type", "==", activeFilter));
+      constraints.push(orderBy("createdAt", "desc"));
+      if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
+      constraints.push(limit(PAGE_SIZE));
+
+      const snap = await getDocs(query(baseRef, ...constraints));
+      if (snap.empty) {
+        hasMore = false;
+      } else {
+        lastVisibleDoc = snap.docs[snap.docs.length - 1];
+        hasMore = snap.docs.length === PAGE_SIZE;
+        snap.docs.forEach((d) => allLoadedTx.push(toTxRow(d)));
+      }
     }
 
     render();
@@ -568,8 +667,15 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -589,3 +695,42 @@ onAuthStateChanged(auth, (user) => {
 
   fetchPage(true);
 });
+
+/* ===========================================================
+   NOTES
+   ===========================================================
+   - The "Other" tab bug: it was querying where("type","==","other")
+     literally, so any transaction whose type wasn't the literal
+     string "other" never matched — even though the same type showed
+     up fine under "All" (metaFor() falls back to the Other icon/
+     label for display purposes without needing the stored value to
+     actually equal "other"). The admin rework introduced several
+     real type values that fell into exactly this trap:
+     admin_adjustment (admin/manual-transactions.js's Increment/
+     Decrement), transfer (same page's user-to-user Transfer), and
+     task_payout (admin/reports-support.js's Force Pay).
+
+     Fixed by making "Other" a genuine catch-all, but NOT via a
+     Firestore not-in query — transactions.html already has 11
+     dedicated chips (deposit, withdrawal, task_payment, ad_payment,
+     referral, airtime, data, swap, refund, decline_expense,
+     unlock_fee), past what not-in reliably supports and only
+     growing as more types get added later. Instead, selecting Other
+     paginates the plain unfiltered stream and discards anything
+     matching a dedicated chip's type client-side (dedicatedChipTypes,
+     read live from each chip's data-filter attribute). This costs
+     more reads when Other entries are sparse relative to everything
+     else — capped at 5 fetch rounds per "Load More" click so a
+     mostly-empty Other bucket can't trigger a large read burst; if
+     Other is extremely rare, hitting Load More more than once to
+     fill a screen is an acceptable trade-off for correctness.
+
+   - Two of those 11 dedicated chips — airtime and data — are likely
+     permanently dead now that Veltrix was removed entirely: it was
+     an external widget that never wrote to TaskNOVA's Firestore in
+     the first place, so nothing has ever written type:"airtime" or
+     type:"data" transactions, and nothing will going forward either.
+     Not removed here since that's an HTML/content decision beyond
+     fixing the Other bug — flagging in case those chips are worth
+     deleting from transactions.html next time it's touched.
+   =========================================================== */

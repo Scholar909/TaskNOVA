@@ -497,6 +497,38 @@ const outstandingText = document.getElementById("outstandingText");
 const depositOutstandingNote = document.getElementById("depositOutstandingNote");
 const swapAvailableNote = document.getElementById("swapAvailableNote");
 
+/* ---------------------------------------------------------
+   INACTIVITY DELETION WARNING BANNER
+   Built dynamically (rather than assuming a specific element
+   exists in wallet.html) and anchored right next to the existing
+   outstanding-balance banner, whose markup this mirrors. This
+   page only DISPLAYS the warning — the actual 1-month-inactive
+   check and the 14-day countdown to deletion are computed by a
+   Supabase scheduled function, not by this page. See the NOTES
+   at the end of this file for that job's full spec.
+   --------------------------------------------------------- */
+let deletionWarningBanner = document.getElementById("deletionWarningBanner");
+if (!deletionWarningBanner) {
+  deletionWarningBanner = document.createElement("div");
+  deletionWarningBanner.id = "deletionWarningBanner";
+  deletionWarningBanner.style.cssText = [
+    "display:none", "align-items:center", "gap:10px", "padding:12px 16px",
+    "margin-bottom:14px", "border-radius:14px",
+    "background:color-mix(in srgb, var(--danger) 10%, transparent)",
+    "border:1px solid color-mix(in srgb, var(--danger) 35%, transparent)",
+    "color:var(--danger)", "font-size:.82rem", "line-height:1.5"
+  ].join(";");
+  deletionWarningBanner.innerHTML = `<i class="bx bx-error-circle" style="font-size:1.2rem;flex-shrink:0;"></i><span id="deletionWarningText"></span>`;
+
+  const anchor = document.getElementById("outstandingBanner");
+  if (anchor?.parentElement) {
+    anchor.parentElement.insertBefore(deletionWarningBanner, anchor);
+  } else {
+    (document.querySelector("main .container") || document.body).prepend(deletionWarningBanner);
+  }
+}
+const deletionWarningText = document.getElementById("deletionWarningText");
+
 const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
@@ -558,6 +590,21 @@ onAuthStateChanged(auth, (user) => {
     } else {
       outstandingBanner.classList.remove("show");
       depositOutstandingNote.textContent = "";
+    }
+
+    // Inactivity deletion warning — deletionWarningAt is set by the (not
+    // yet built) Supabase scheduled function described in this file's
+    // NOTES, once wallet.earned has gone a month without increasing.
+    const deletionWarningAt = data.deletionWarningAt?.toDate ? data.deletionWarningAt.toDate() : null;
+    if (deletionWarningAt) {
+      const daysSinceWarning = Math.floor((Date.now() - deletionWarningAt.getTime()) / 86400000);
+      const daysLeft = Math.max(0, 14 - daysSinceWarning);
+      deletionWarningBanner.style.display = "flex";
+      deletionWarningText.textContent = daysLeft > 0
+        ? `Your account has been inactive and will be deleted in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless your Earned Balance increases. Complete a task to keep your account active.`
+        : "Your account is scheduled for deletion due to inactivity. Complete a task now to keep it active.";
+    } else {
+      deletionWarningBanner.style.display = "none";
     }
 
     swapAvailableNote.textContent = `Available: ${formatNaira(currentWallet.earned)}`;
@@ -1457,4 +1504,55 @@ swapForm.addEventListener("submit", async (e) => {
    here). settings/manualTransferBank { bankName, accountNumber,
    accountName } is populated from admin/settings.html and read live
    by this page.
+
+   ===========================================================
+   METHOD 4 — INACTIVITY-BASED AUTO-DELETION (Supabase scheduled)
+   ===========================================================
+   This page only shows the deletionWarningBanner above when
+   deletionWarningAt is set — it never sets that field itself, and
+   it never deletes anything. The actual logic needs to run on a
+   schedule regardless of whether the user ever opens the app
+   again, so it belongs entirely in a Supabase scheduled Edge
+   Function (cron), not any page:
+
+   8. inactivity-sweep() — run daily
+      - For every user where wallet.earned last increased more than
+        30 days ago (track this via lastEarnedAt, which every
+        earned-crediting write across the app needs to set —
+        Force Pay in admin/reports-support.js, task-submission
+        approval, refer.js's referral reward, etc. — flag this the
+        same way lifetimeDeposited was flagged for deposits) AND
+        deletionWarningAt is not yet set: set
+        deletionWarningAt = now, and write a notification to
+        users/{uid}/notifications warning them (14 days, will be
+        deleted, earn something to cancel it).
+      - For every user where deletionWarningAt IS set AND
+        lastEarnedAt is still <= deletionWarningAt (no new earning
+        since the warning fired) AND now - deletionWarningAt >= 14
+        days: perform the SAME deletion this page's Delete Account
+        button performs manually on profile.js — wipe their own
+        Firestore doc + subcollections, and write an adminAlerts
+        doc (type: "account_deletion_auto", same fields) so there's
+        still a record of it, even though this path runs with
+        elevated privileges and could delete the Firebase Auth
+        account directly too (profile.js's manual path deliberately
+        doesn't, to avoid a reauth prompt — this automated path has
+        no such UX constraint, so it's reasonable for it to just
+        finish the job via the Firebase Admin SDK).
+      - For every user where deletionWarningAt IS set but
+        lastEarnedAt has since moved past it (they earned again):
+        clear deletionWarningAt back to null — they're active again.
+
+   ===========================================================
+   RELATED — TRANSACTION HISTORY RETENTION (not this file's job)
+   ===========================================================
+   A separate, unrelated Supabase scheduled function needs to purge
+   transaction history older than 3 months on a rolling basis
+   (oldest batch clears every 3 months) across every user's
+   transactions subcollection — this wallet page and transactions.js
+   both just read whatever's there, neither needs to know the sweep
+   is happening. Noted here only so the two scheduled jobs (this one
+   and the inactivity sweep above) aren't confused for the same
+   thing — they're independent, and the retention sweep does NOT
+   look at lastEarnedAt or delete any user docs.
    =========================================================== */

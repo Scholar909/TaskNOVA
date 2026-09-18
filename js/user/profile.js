@@ -1,6 +1,26 @@
 /* =========================================================
    TASKNOVA — PROFILE PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Account type / institution rows removed entirely — neither
+      field is ever set anymore since the site-wide accountType/
+      institution removal.
+   2. Delete Account added at the bottom, gated on outstanding
+      balance being exactly ₦0. Deletes the user's own Firestore
+      data (main doc + transactions/notifications/referralRewards
+      subcollections), writes an admin alert with the account's
+      email so admin can remove the matching Firebase Auth entry
+      (the client only ever deletes its OWN Firestore data here —
+      it does not attempt to delete the Auth account itself; see
+      the note at the end of this file for why and the simpler
+      alternative if that's actually preferred).
+   3. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   4. Tawk.to visitor auto-fill added (same block as every other
+      reworked page).
+   5. SKRED_ADVERTISE_LINK renamed to DEFAULT_BANNER_LINK (same
+      fix already applied elsewhere).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -12,11 +32,15 @@ import {
 import {
   getFirestore,
   doc,
+  deleteDoc,
+  setDoc,
   onSnapshot,
   collection,
   query,
   where,
-  limit
+  limit,
+  getDocs,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -153,15 +177,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -271,6 +297,41 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
 });
 
 /* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   every other reworked page — copy it onto the rest as they're
+   reworked.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
+
+/* ---------------------------------------------------------
    DATE / AGE HELPERS
    --------------------------------------------------------- */
 function formatAccountAge(createdDate) {
@@ -291,9 +352,13 @@ function formatMemberSince(createdDate) {
   });
 }
 
+function formatNaira(amount) {
+  return "₦" + (Number(amount) || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 /* ---------------------------------------------------------
    AUTH GUARD + LIVE PROFILE DATA
-   (Read-only — nothing on this page is editable.)
+   (Read-only except for the Delete Account action below.)
    --------------------------------------------------------- */
 const profileAvatar = document.getElementById("profileAvatar");
 const profileFullName = document.getElementById("profileFullName");
@@ -301,10 +366,6 @@ const profileUsername = document.getElementById("profileUsername");
 const profileAccountAge = document.getElementById("profileAccountAge");
 
 const infoEmail = document.getElementById("infoEmail");
-const infoAccountType = document.getElementById("infoAccountType");
-const infoInstitutionRow = document.getElementById("infoInstitutionRow");
-const infoInstitution = document.getElementById("infoInstitution");
-const infoInstitutionAbbr = document.getElementById("infoInstitutionAbbr");
 const infoMemberSince = document.getElementById("infoMemberSince");
 
 const declinesCount = document.getElementById("declinesCount");
@@ -317,6 +378,8 @@ const userAvatarEl = document.getElementById("menuUserAvatar");
 const alertDot = document.getElementById("alertDot");
 
 let unsubscribeUserDoc = null;
+let currentUser = null;
+let currentUserData = { username: "", fullName: "", email: "", outstanding: 0 };
 
 onAuthStateChanged(auth, (user) => {
   if (!user) {
@@ -329,6 +392,8 @@ onAuthStateChanged(auth, (user) => {
     return;
   }
 
+  currentUser = user;
+
   if (unsubscribeUserDoc) unsubscribeUserDoc();
 
   unsubscribeUserDoc = onSnapshot(doc(db, "users", user.uid), (snap) => {
@@ -339,9 +404,18 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
     const createdDate = data.createdAt?.toDate ? data.createdAt.toDate() : null;
 
+    currentUserData = {
+      username: data.username || "",
+      fullName: data.fullName || "",
+      email: data.email || user.email || "",
+      outstanding: data.outstanding ?? 0
+    };
+
     // Header menu drawer (shared chrome)
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
     // Profile hero
@@ -355,17 +429,7 @@ onAuthStateChanged(auth, (user) => {
 
     // Info list
     if (infoEmail) { infoEmail.textContent = data.email || user.email || "—"; infoEmail.classList.remove("skeleton"); }
-    if (infoAccountType) { infoAccountType.textContent = data.accountType || "—"; infoAccountType.classList.remove("skeleton"); }
     if (infoMemberSince) { infoMemberSince.textContent = formatMemberSince(createdDate); infoMemberSince.classList.remove("skeleton"); }
-
-    const needsInstitution = data.accountType === "Student" || data.accountType === "Teacher";
-    if (needsInstitution && data.institution) {
-      infoInstitutionRow.style.display = "flex";
-      infoInstitution.textContent = data.institution;
-      infoInstitutionAbbr.textContent = data.institutionAbbr || "—";
-    } else {
-      infoInstitutionRow.style.display = "none";
-    }
 
     // Task declines
     const declines = data.taskDeclines ?? 0;
@@ -393,6 +457,11 @@ onAuthStateChanged(auth, (user) => {
     } else {
       declinesNote.textContent = "Getting your tasks declined too often can lock your account. At 50 declines your account is locked until the unlock fee is paid.";
     }
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("Profile listener error:", err);
   });
@@ -410,3 +479,158 @@ onAuthStateChanged(auth, (user) => {
     console.error("Alert dot listener error:", err);
   });
 });
+
+/* ===========================================================
+   DELETE ACCOUNT
+   Blocked entirely while outstanding > 0 — the button itself
+   still opens the modal in that case, but shows the blocking
+   message instead of the confirm input, since the user needs to
+   see WHY, not just have the button silently refuse to work.
+   =========================================================== */
+const deleteAccountBtn = document.getElementById("deleteAccountBtn");
+const deleteModal = document.getElementById("deleteModal");
+const deleteModalBackdrop = document.getElementById("deleteModalBackdrop");
+const deleteModalClose = document.getElementById("deleteModalClose");
+const deleteModalCancel = document.getElementById("deleteModalCancel");
+const deleteModalConfirm = document.getElementById("deleteModalConfirm");
+const deleteConfirmInput = document.getElementById("deleteConfirmInput");
+const deleteModalMsg = document.getElementById("deleteModalMsg");
+
+function openDeleteModal() {
+  deleteConfirmInput.value = "";
+  deleteModalConfirm.disabled = true;
+  deleteModalMsg.style.display = "none";
+
+  if (currentUserData.outstanding > 0) {
+    deleteConfirmInput.style.display = "none";
+    deleteModalMsg.style.display = "block";
+    deleteModalMsg.className = "mc-msg error";
+    deleteModalMsg.textContent = `You have an outstanding balance of ${formatNaira(currentUserData.outstanding)}. Clear it before you can delete your account.`;
+  } else {
+    deleteConfirmInput.style.display = "block";
+  }
+
+  deleteModal.classList.add("open");
+  deleteModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeDeleteModal() {
+  deleteModal.classList.remove("open");
+  deleteModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+deleteAccountBtn?.addEventListener("click", openDeleteModal);
+deleteModalBackdrop.addEventListener("click", closeDeleteModal);
+deleteModalClose.addEventListener("click", closeDeleteModal);
+deleteModalCancel.addEventListener("click", closeDeleteModal);
+
+deleteConfirmInput.addEventListener("input", () => {
+  deleteModalConfirm.disabled = deleteConfirmInput.value.trim() !== "DELETE";
+});
+
+// Deletes every doc in a subcollection, batching in pages of up to 300 —
+// fine for the realistic size of a single user's own transactions/
+// notifications/referralRewards; a genuinely huge account might need a
+// couple of page reloads to fully clear, which is an acceptable edge case
+// for a client-only deletion with no backend function behind it.
+async function wipeSubcollection(uid, name) {
+  const snap = await getDocs(query(collection(db, "users", uid, name), limit(300)));
+  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  return snap.size;
+}
+
+deleteModalConfirm.addEventListener("click", async () => {
+  if (currentUserData.outstanding > 0) return; // modal already shows why
+  if (deleteConfirmInput.value.trim() !== "DELETE") return;
+  if (!currentUser) return;
+
+  deleteModalConfirm.classList.add("loading");
+  deleteModalConfirm.disabled = true;
+
+  try {
+    // Notify admin FIRST — if this fails, abort entirely rather than wipe
+    // Firestore data with nobody knowing to go remove the matching
+    // Firebase Auth entry afterward.
+    const alertRef = doc(collection(db, "adminAlerts"));
+    await setDoc(alertRef, {
+      type: "account_deletion_request",
+      uid: currentUser.uid,
+      email: currentUserData.email,
+      username: currentUserData.username,
+      fullName: currentUserData.fullName,
+      status: "pending",
+      requestedAt: serverTimestamp()
+    });
+
+    await wipeSubcollection(currentUser.uid, "transactions");
+    await wipeSubcollection(currentUser.uid, "notifications");
+    await wipeSubcollection(currentUser.uid, "referralRewards");
+    await deleteDoc(doc(db, "users", currentUser.uid));
+
+    await signOut(auth);
+    window.location.href = "../index.html";
+  } catch (err) {
+    console.error("Delete account error:", err);
+    deleteModalMsg.style.display = "block";
+    deleteModalMsg.className = "mc-msg error";
+    deleteModalMsg.textContent = "Couldn't delete your account. Please try again.";
+  } finally {
+    deleteModalConfirm.classList.remove("loading");
+    deleteModalConfirm.disabled = false;
+  }
+});
+
+/* ===========================================================
+   NOTES
+   ===========================================================
+   - This only deletes the user's OWN Firestore footprint: their
+     main users/{uid} doc plus the transactions/notifications/
+     referralRewards subcollections. It does NOT touch tasks/ads
+     they've posted, submissions they've made on others' tasks, or
+     manualDeposits they've submitted — a client can't safely
+     cascade-delete those without breaking other people's in-flight
+     work (a worker mid-submission on their task, a pending manual
+     deposit review, etc.). If truly complete erasure is wanted,
+     that needs a privileged Supabase Edge Function that can make
+     business-logic judgment calls (auto-decline and refund their
+     pending tasks, keep-but-anonymize historical submissions
+     others were already paid against, etc.) — not a raw delete.
+
+   - The Firebase Auth account itself is deliberately NOT deleted
+     from this page. A signed-in user CAN delete their own Auth
+     account client-side (`deleteUser(auth.currentUser)`), but
+     Firebase requires a recent sign-in for that, which means
+     prompting for their password again right here — this page
+     skips that UX entirely and instead writes an `adminAlerts` doc
+     with their email so admin can remove the Auth entry manually
+     (reusing the same delete flow already built for admin-initiated
+     deletions in admin/users.js). If the reauth prompt is actually
+     preferred over an admin queue, it's a small addition: import
+     `reauthenticateWithCredential`/`EmailAuthProvider`, ask for the
+     password in the modal, then call `deleteUser(currentUser)`
+     before signing out — flag if that's wanted instead.
+
+   - `adminAlerts` is a brand-new top-level collection this page
+     introduces — nothing in the admin app reads it yet. Whichever
+     admin page ends up owning "things needing admin attention"
+     should add a tab/section that lists status:"pending" docs here
+     and lets admin mark one "handled" once they've removed the
+     matching Auth account.
+
+   - Only `outstanding` gates deletion, per what was asked — a
+     non-zero Deposit or Earned balance does NOT block deletion,
+     it's simply forfeited (the modal's warning text says so). Flag
+     if that should also require zeroing out first.
+
+   - This page does not implement the inactivity-based automatic
+     deletion (1 month with no earned-balance increase → warning →
+     14 more days → deletion) — that lives in wallet.js (the page
+     that displays the warning) and a Supabase scheduled function
+     (the thing that actually decides and eventually deletes,
+     independent of whether anyone has the app open). See wallet.js's
+     own BACKEND NOTES for the full spec of that job, including that
+     it should perform this exact same deletion procedure (own data
+     wipe + adminAlerts doc) when it fires automatically.
+   =========================================================== */
