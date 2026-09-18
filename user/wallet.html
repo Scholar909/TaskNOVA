@@ -33,9 +33,6 @@
 
   <!-- Wallet page stylesheet -->
   <link rel="stylesheet" href="../css/user/wallet.css">
-
-  <!-- Paystack Inline JS -->
-  <script src="https://js.paystack.co/v1/inline.js"></script>
 </head>
 <body>
 
@@ -98,6 +95,7 @@
         <div class="menu-group-body">
           <div>
             <nav>
+              <a href="home.html"><i class="bx bxs-dashboard"></i> Dashboard</a>
               <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
               <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
               <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
@@ -250,7 +248,7 @@
                 <span class="field-note" id="depositMethodNote">Instant Automatic credits your wallet immediately after payment.</span>
               </div>
 
-              <!-- ===== METHOD 1: INSTANT AUTOMATIC (Paystack) — unchanged ===== -->
+              <!-- ===== METHOD 1: INSTANT AUTOMATIC (Flutterwave) — unchanged ===== -->
               <div class="deposit-method-panel" id="methodAutomatic" data-method="automatic">
                 <div class="amount-field">
                   <label for="depositAmount">Amount</label>
@@ -270,11 +268,11 @@
 
                 <button type="submit" class="btn btn-primary" id="depositSubmit">
                   <span class="btn-spinner"></span>
-                  <span class="btn-label">Pay with Paystack</span>
+                  <span class="btn-label">Pay with Flutterwave</span>
                   <i class="bx bx-lock-alt"></i>
                 </button>
 
-                <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Secured by <b>Paystack</b></p>
+                <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Secured by <b>Flutterwave</b></p>
               </div>
 
               <!-- ===== METHOD 2: MANUAL AUTOMATIC (temporary virtual account) ===== -->
@@ -432,7 +430,7 @@
                 <i class="bx bx-upload"></i>
               </button>
 
-              <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Disbursed via <b>Paystack</b></p>
+              <p class="paystack-badge"><i class="bx bx-shield-quarter"></i> Disbursed via <b>Flutterwave</b></p>
             </form>
 
             <!-- ============ SWAP PANEL ============ -->
@@ -536,7 +534,7 @@
     </a>
   </nav>
 
-  <!-- Wallet page logic (Firebase auth guard, live balances, Paystack deposit/withdraw, swap) -->
+  <!-- Wallet page logic (Firebase auth guard, live balances, Flutterwave deposit/withdraw, swap) -->
   <script type="module" src="../js/user/wallet.js"></script>
 <!-- Start of Tawk.to Script -->
 <script type="text/javascript">

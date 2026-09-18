@@ -95,6 +95,7 @@
         <div class="menu-group-body">
           <div>
             <nav>
+              <a href="home.html"><i class="bx bxs-dashboard"></i> Dashboard</a>
               <a href="profile.html"><i class="bx bx-user"></i> Profile</a>
               <a href="wallet.html"><i class="bx bx-wallet"></i> Wallet</a>
               <a href="transactions.html"><i class="bx bx-receipt"></i> Transaction History</a>
@@ -213,23 +214,6 @@
             </div>
           </div>
 
-          <div class="info-row reveal delay-1">
-            <div class="ir-icon"><i class="bx bx-id-card"></i></div>
-            <div class="ir-body">
-              <div class="ir-label">Account type</div>
-              <div class="ir-value skeleton" id="infoAccountType">—</div>
-            </div>
-          </div>
-
-          <div class="info-row reveal delay-2" id="infoInstitutionRow" style="display:none;">
-            <div class="ir-icon"><i class="bx bx-buildings"></i></div>
-            <div class="ir-body">
-              <div class="ir-label">Institution / Location</div>
-              <div class="ir-value" id="infoInstitution">—</div>
-            </div>
-            <span class="ir-badge" id="infoInstitutionAbbr">—</span>
-          </div>
-
           <div class="info-row reveal delay-2">
             <div class="ir-icon"><i class="bx bx-calendar-check"></i></div>
             <div class="ir-body">
@@ -256,6 +240,15 @@
           </p>
         </div>
 
+        <!-- Delete account -->
+        <div class="danger-zone reveal delay-3">
+          <strong><i class="bx bx-error"></i> Delete Account</strong>
+          <p>This permanently deletes your TaskNOVA account and data. Any remaining Deposit or Earned balance is forfeited — withdraw or spend it first if you don't want to lose it. Your outstanding balance must be ₦0 before you can delete your account.</p>
+          <button type="button" class="btn-danger-outline" id="deleteAccountBtn">
+            <i class="bx bx-trash"></i> Delete My Account
+          </button>
+        </div>
+
       </section>
 
       <!-- Bottom advertisement -->
@@ -270,6 +263,35 @@
 
     </div>
   </main>
+
+  <!-- =========================================================
+       DELETE ACCOUNT CONFIRMATION MODAL
+       ========================================================= -->
+  <div class="modal-overlay" id="deleteModal" aria-hidden="true">
+    <div class="modal-backdrop" id="deleteModalBackdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <strong>Delete Account</strong>
+        <button type="button" class="menu-close" id="deleteModalClose" aria-label="Close"><i class="bx bx-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning">
+          <i class="bx bx-error-circle"></i>
+          This can't be undone. Your profile, transaction history, and any remaining Deposit or Earned balance will be permanently lost.
+        </p>
+        <label class="mc-field-label">Type <strong>DELETE</strong> to confirm</label>
+        <input type="text" id="deleteConfirmInput" placeholder="Type DELETE" autocomplete="off">
+        <div id="deleteModalMsg" class="mc-msg" style="display:none;"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="deleteModalCancel">Cancel</button>
+          <button type="button" class="btn-danger-solid" id="deleteModalConfirm" disabled>
+            <span class="btn-spinner"></span>
+            <span class="btn-label"><i class="bx bx-trash"></i> Delete</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Floating advertisement (draggable) -->
   <div class="floating-ad" id="floatingAd" data-default-ad>
