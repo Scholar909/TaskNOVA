@@ -356,17 +356,298 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
    server-side; the embeddable widget only needs the public
    partner ID, which is safe in frontend code).
    =========================================================== */
+
+/* ===========================================================
+   TASKNOVA DATA & AIRTIME UTILITY LOGIC
+   =========================================================== */
 const VELTRIX_PARTNER_ID = "536ba438-bfc9-4af7-9ef6-bf0103691ab8";
 
-(function loadVeltrixWidget() {
-  if (document.querySelector('script[data-veltrix-widget]')) return; // already injected
-  const script = document.createElement("script");
-  script.src = "https://veltrix.com.ng/widget/veltrix.js";
-  script.dataset.partner = VELTRIX_PARTNER_ID;
-  script.dataset.veltrixWidget = "true";
-  script.async = true;
-  document.head.appendChild(script);
-})();
+const PREFIXES = {
+  mtn: ["0803","0806","0703","0706","0813","0816","0810","0814","0903","0906","0913","0916","0704"],
+  airtel: ["0802","0808","0708","0812","0701","0902","0901","0904","0907","0912"],
+  glo: ["0805","0807","0705","0815","0811","0905","0915"],
+  "9mobile": ["0809","0817","0818","0909","0908"]
+};
+
+const NETWORK_IDS = { mtn: 1, airtel: 2, glo: 3, "9mobile": 4 };
+
+let state = {
+  phone: "",
+  network: null,       // "mtn" | "airtel" | "glo" | "9mobile"
+  netId: null,         // 1 | 2 | 3 | 4
+  type: "airtime",     // "airtime" | "data"
+  airtimeAmount: 0,
+  selectedPlan: null,  // plan object from Veltrix
+  plans: [],
+  selectedPlanType: "SME"
+};
+
+function detectNetwork(phone) {
+  if (phone.length < 4) return null;
+  const prefix = phone.substring(0, 4);
+  for (const [net, list] of Object.entries(PREFIXES)) {
+    if (list.includes(prefix)) return net;
+  }
+  return null;
+}
+
+function initUtilityWidget() {
+  const phoneInput = document.getElementById("vPhoneInput");
+  const netBadge = document.getElementById("vNetBadge");
+  const netBtns = document.querySelectorAll(".v-net-btn");
+  const typeSelect = document.getElementById("vTypeSelect");
+  const airtimeSection = document.getElementById("vAirtimeSection");
+  const dataSection = document.getElementById("vDataSection");
+  const airtimeInput = document.getElementById("vAirtimeAmount");
+  const quickBtns = document.querySelectorAll(".v-quick-btn");
+  const plansContainer = document.getElementById("vPlansContainer");
+  const payBtn = document.getElementById("vPayBtn");
+  const statusMsg = document.getElementById("vUtilityStatus");
+  const form = document.getElementById("vUtilityForm");
+
+  if (!phoneInput || !form) return;
+
+  function setNetwork(netKey, isAuto = false) {
+    state.network = netKey;
+    state.netId = netKey ? NETWORK_IDS[netKey] : null;
+
+    netBtns.forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.network === netKey);
+    });
+
+    if (netBadge) {
+      netBadge.textContent = netKey ? netKey.toUpperCase() : (isAuto ? "Auto" : "Select");
+    }
+
+    if (state.type === "data") {
+      fetchPlans();
+    } else {
+      updatePayButton();
+    }
+  }
+
+  phoneInput.addEventListener("input", (e) => {
+    state.phone = e.target.value.trim();
+    const detected = detectNetwork(state.phone);
+    if (detected) {
+      setNetwork(detected, true);
+    } else if (state.phone.length < 4) {
+      setNetwork(null, false);
+    }
+  });
+
+  netBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      setNetwork(btn.dataset.network, false);
+    });
+  });
+
+  typeSelect.addEventListener("change", (e) => {
+    state.type = e.target.value;
+    if (state.type === "airtime") {
+      airtimeSection.style.display = "block";
+      dataSection.style.display = "none";
+    } else {
+      airtimeSection.style.display = "none";
+      dataSection.style.display = "block";
+      fetchPlans();
+    }
+    updatePayButton();
+  });
+
+  airtimeInput.addEventListener("input", (e) => {
+    state.airtimeAmount = parseFloat(e.target.value) || 0;
+    updatePayButton();
+  });
+
+  quickBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const val = parseFloat(btn.dataset.amount);
+      airtimeInput.value = val;
+      state.airtimeAmount = val;
+      updatePayButton();
+    });
+  });
+
+  // Filter button event listeners
+  const filterBtns = document.querySelectorAll(".v-type-btn");
+  filterBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      filterBtns.forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.selectedPlanType = btn.dataset.type;
+      renderFilteredPlans();
+    });
+  });
+
+  function formatDataSize(p) {
+  let val = p.plan_name || p.name || p.plan || p.size || p.plan_size || p.volume || "";
+  if (!val) return "Data Plan";
+  
+  val = String(val).trim();
+  
+  // Return as-is if unit is already present
+  if (/(MB|GB|TB|KB)/i.test(val)) {
+    return val;
+  }
+  
+  // Format numeric values missing units
+  const num = parseFloat(val);
+  if (!isNaN(num)) {
+    return num >= 10 ? `${num} MB` : `${num} GB`;
+  }
+  
+  return val;
+}
+
+
+  function renderFilteredPlans() {
+  if (!state.plans.length) return;
+
+  const filtered = state.plans.filter((p) => {
+    const pType = String(p.plantype || p.plan_type || "").toLowerCase().replace(/[\s_]+/g, "");
+    const targetType = state.selectedPlanType.toLowerCase().replace(/[\s_]+/g, "");
+    return pType.includes(targetType) || targetType.includes(pType);
+  });
+
+  if (!filtered.length) {
+    plansContainer.innerHTML = `<div class="v-plans-state">No ${state.selectedPlanType} plans available for this network.</div>`;
+    state.selectedPlan = null;
+    updatePayButton();
+    return;
+  }
+
+  plansContainer.innerHTML = filtered.map((p) => {
+    const sizeDisplay = formatDataSize(p);
+    const isSelected = state.selectedPlan && String(state.selectedPlan.id) === String(p.id);
+
+    return `
+      <div class="v-plan-card ${isSelected ? "selected" : ""}" data-plan-id="${p.id}">
+        <div class="v-plan-info">
+          <strong>${sizeDisplay}</strong>
+          <span>Validity: ${p.validity || p.month_validate || "N/A"}</span>
+        </div>
+        <div class="v-plan-price">₦${Number(p.amount).toLocaleString()}</div>
+      </div>
+    `;
+  }).join("");
+
+  plansContainer.querySelectorAll(".v-plan-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      plansContainer.querySelectorAll(".v-plan-card").forEach((c) => c.classList.remove("selected"));
+      card.classList.add("selected");
+      const planId = card.dataset.planId;
+      state.selectedPlan = state.plans.find((p) => String(p.id) === String(planId));
+      updatePayButton();
+    });
+  });
+}
+
+
+  async function fetchPlans() {
+    if (!state.network) {
+      plansContainer.innerHTML = `<div class="v-plans-state">Select network provider first.</div>`;
+      return;
+    }
+
+    plansContainer.innerHTML = `<div class="v-plans-state">Loading plans...</div>`;
+    state.selectedPlan = null;
+    updatePayButton();
+
+    try {
+      const data = await callEdgeFunction("buy-utility?action=get-plans");
+      if (data.error) throw new Error(data.error);
+
+      const netPlans = data.filter(
+        (p) => p.network === state.netId || p.network_name?.toLowerCase() === state.network
+      );
+
+      if (!netPlans.length) {
+        plansContainer.innerHTML = `<div class="v-plans-state">No plans available for this network.</div>`;
+        return;
+      }
+
+      state.plans = netPlans;
+      renderFilteredPlans();
+    } catch (err) {
+      plansContainer.innerHTML = `<div class="v-plans-state">Error fetching plans. Try again.</div>`;
+    }
+  }
+
+
+  function updatePayButton() {
+    if (state.type === "airtime") {
+      if (state.phone.length === 11 && state.network && state.airtimeAmount >= 50) {
+        // Airtime receives 5% markup for TaskNOVA
+        const totalPayable = state.airtimeAmount * 1.05;
+        payBtn.disabled = false;
+        payBtn.textContent = `Pay ₦${totalPayable.toFixed(2)}`;
+      } else {
+        payBtn.disabled = true;
+        payBtn.textContent = `Pay ₦0.00`;
+      }
+    } else {
+      if (state.phone.length === 11 && state.network && state.selectedPlan) {
+        // Data plan price already incorporates Veltrix partner markup
+        payBtn.disabled = false;
+        payBtn.textContent = `Pay ₦${Number(state.selectedPlan.amount).toLocaleString()}`;
+      } else {
+        payBtn.disabled = true;
+        payBtn.textContent = `Pay ₦0.00`;
+      }
+    }
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (payBtn.disabled) return;
+
+    payBtn.disabled = true;
+    payBtn.textContent = "Processing...";
+    statusMsg.style.display = "none";
+
+    try {
+      // UPDATED CODE
+const user = auth.currentUser;
+if (!user) throw new Error("User session expired. Please refresh and log in.");
+
+const idToken = await user.getIdToken();
+
+const payload = {
+  type: state.type,
+  network: state.type === "data" ? state.netId : state.network,
+  phone: state.phone,
+  amount: state.airtimeAmount,
+  plan_id: state.selectedPlan ? state.selectedPlan.id : null
+};
+
+const res = await callEdgeFunction("buy-utility", payload, idToken);
+
+      if (res.error) throw new Error(res.error);
+
+      statusMsg.className = "v-status-msg success";
+      statusMsg.textContent = res.message || "Purchase successful!";
+      statusMsg.style.display = "block";
+      
+      form.reset();
+      state.selectedPlan = null;
+      setNetwork(null);
+      updatePayButton();
+
+    } catch (err) {
+      statusMsg.className = "v-status-msg error";
+      statusMsg.textContent = err.message || "Transaction failed. Please try again.";
+      statusMsg.style.display = "block";
+    } finally {
+      payBtn.disabled = false;
+      updatePayButton();
+    }
+  });
+}
+
+// Call init inside DOM loads / auth state ready
+document.addEventListener("DOMContentLoaded", initUtilityWidget);
+
 
 // The widget auto-binds itself to any element carrying the
 // data-veltrix-open attribute (home.html's "Buy Now" button already
