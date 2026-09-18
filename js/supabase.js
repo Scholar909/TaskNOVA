@@ -8,9 +8,9 @@
    logout-everyone, the 3-month data-retention job, etc.), so that
    secret keys never have to live in Firebase Cloud Functions.
 
-   Nothing calls this yet — home.js doesn't need an edge function.
-   wallet.js will be the first real consumer, since Flutterwave's
-   secret key has to be used from a server context, never here.
+   Used by wallet.js (Flutterwave deposit verify, bank resolve,
+   withdrawal, virtual account create/cancel) as of this pass — more
+   pages will import it as they're reworked.
    ========================================================= */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -31,15 +31,42 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
  *
  * @param {string} functionName - the Edge Function's slug, e.g. "resolve-bank-account"
  * @param {object} [body] - JSON-serializable request body
+ * @param {string} [idToken] - a Firebase Auth ID token (from `user.getIdToken()`),
+ *   sent as a Bearer header so the function can verify who's calling before
+ *   doing anything privileged. Omit for functions that don't need auth
+ *   (e.g. a public bank list).
  * @returns {Promise<any>}
  */
-export async function callEdgeFunction(functionName, body) {
-  const { data, error } = await supabase.functions.invoke(functionName, {
-    body: body ?? {}
-  });
-  if (error) throw error;
+export async function callEdgeFunction(functionName, body, idToken) {
+  const options = { body: body ?? {} };
+  if (idToken) {
+    options.headers = { Authorization: `Bearer ${idToken}` };
+  }
+  const { data, error } = await supabase.functions.invoke(functionName, options);
+  
+  if (error) {
+    if (error.context) {
+      try {
+        let errJson = null;
+        if (typeof error.context.json === "function") {
+          errJson = await error.context.json();
+        } else if (typeof error.context === "object") {
+          errJson = error.context;
+        }
+
+        if (errJson?.error) throw new Error(errJson.error);
+        if (errJson?.message) throw new Error(errJson.message);
+      } catch (e) {
+        if (e.message && !e.message.includes("is not a function") && e.message !== "Edge Function returned a non-2xx status code") {
+          throw e;
+        }
+      }
+    }
+    throw new Error(error.message || "Transaction failed. Please try again.");
+  }
   return data;
 }
+
 
 /* ===========================================================
    NOTES
