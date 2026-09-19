@@ -835,6 +835,45 @@ function handleVmOutcome(outcome) {
   setTimeout(() => { window.location.href = "transactions.html"; }, 1800);
 }
 
+let vmPollInterval = null;
+
+function stopVmWatchers() {
+  clearInterval(vmTimerInterval);
+  vmTimerInterval = null;
+  clearInterval(vmPollInterval);
+  vmPollInterval = null;
+  if (vmUnsubscribe) { vmUnsubscribe(); vmUnsubscribe = null; }
+}
+
+function resetVirtualPanel() {
+  stopVmWatchers();
+  vmReference = null;
+  vmSettled = false;
+  vmStepPending.style.display = "none";
+  vmStepAmount.style.display = "";
+  vmCountdown.classList.remove("warn");
+  vmStatus.className = "dm-status";
+  vmStatus.innerHTML = `<i class="bx bx-loader-alt bx-spin"></i> Waiting for your transfer…`;
+  requestAnimationFrame(syncWalletHeight);
+}
+
+function handleVmOutcome(outcome) {
+  vmSettled = true;
+  stopVmWatchers();
+
+  if (outcome === "successful") {
+    vmStatus.className = "dm-status success";
+    vmStatus.innerHTML = `<i class="bx bx-check-circle"></i> Payment successful — your wallet has been credited.`;
+  } else {
+    vmStatus.className = "dm-status fail";
+    vmStatus.innerHTML = outcome === "expired"
+      ? `<i class="bx bx-x-circle"></i> This virtual account expired before payment was received.`
+      : `<i class="bx bx-x-circle"></i> Payment wasn't received — please try again.`;
+  }
+
+  setTimeout(() => { window.location.href = "transactions.html"; }, 1800);
+}
+
 virtualProceedBtn.addEventListener("click", async () => {
   clearPanelMsg(depositMsg);
   const baseAmount = Number(virtualAmountInput.value);
@@ -869,19 +908,19 @@ virtualProceedBtn.addEventListener("click", async () => {
       status: "pending",
       createdAt: serverTimestamp()
     });
-    
+
     vmBankName.textContent = result.bankName || "—";
     vmAccountNumber.textContent = result.accountNumber || "—";
     vmAccountName.textContent = result.accountName || "—";
 
     const flutterwaveAmount = Number(result.flutterwaveAmount);
-
     vmAmount.textContent = formatNaira(flutterwaveAmount);
 
     vmStepAmount.style.display = "none";
     vmStepPending.style.display = "";
     startVmCountdown(new Date(result.expiresAt));
 
+    // Listen to real-time Firestore updates from verify-payments
     vmUnsubscribe = onSnapshot(doc(db, "virtualAccountPayments", vmReference), (snap) => {
       const status = snap.data()?.status;
       if (!vmSettled && (status === "successful" || status === "failed" || status === "expired")) {
@@ -890,6 +929,17 @@ virtualProceedBtn.addEventListener("click", async () => {
     }, (err) => {
       console.error("Virtual account status listener error:", err);
     });
+
+    // Background polling every 8 seconds as a safeguard
+    clearInterval(vmPollInterval);
+    vmPollInterval = setInterval(async () => {
+      if (vmSettled || !vmReference) return;
+      try {
+        await verifyTransaction(vmReference, null);
+      } catch (err) {
+        // Silent fail; polling will retry next interval
+      }
+    }, 8000);
 
     requestAnimationFrame(syncWalletHeight);
   } catch (err) {

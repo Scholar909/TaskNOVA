@@ -470,6 +470,11 @@ function renderReferredList(rows) {
       written by this page's own client-side code (see
       processReward below) and never anywhere else.
    --------------------------------------------------------- */
+/* ---------------------------------------------------------
+   AUTH GUARD + LIVE DATA
+   Referral code = the user's own username.
+   Stats update in real time from Firestore.
+   --------------------------------------------------------- */
 let unsubscribeUserDoc = null;
 let unsubscribeReferredUsers = null;
 let unsubscribeRewards = null;
@@ -478,7 +483,6 @@ let currentUid = "";
 let subscribedUsername = "";
 let referredUsersCache = [];
 let rewardedUidSet = new Set();
-const rewardAttempted = new Set(); // in-memory guard against redundant transaction calls this session
 
 function recomputeAndRender() {
   let total = 0;
@@ -506,54 +510,6 @@ function recomputeAndRender() {
   renderReferredList(rows);
 }
 
-/* ---------------------------------------------------------
-   Pays the one-time ₦100 reward for a qualifying referral.
-   Safe against double-payment two ways: the in-memory
-   rewardAttempted guard (avoids redundant attempts within this
-   page load) AND a fresh read of the marker doc inside the
-   transaction itself (the real guarantee — enforced further by
-   a Firestore Security Rule, see the BACKEND NOTE at the end).
-   --------------------------------------------------------- */
-async function processReward(referredUser) {
-  if (rewardAttempted.has(referredUser.uid)) return;
-  rewardAttempted.add(referredUser.uid);
-
-  const rewardRef = doc(db, "users", currentUid, "referralRewards", referredUser.uid);
-  const myUserRef = doc(db, "users", currentUid);
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const rewardSnap = await transaction.get(rewardRef);
-      if (rewardSnap.exists()) return; // already paid — nothing to do
-
-      const mySnap = await transaction.get(myUserRef);
-      if (!mySnap.exists()) return;
-      const currentEarned = mySnap.data().wallet?.earned ?? 0;
-
-      transaction.set(rewardRef, {
-        username: referredUser.username,
-        rewardedAt: serverTimestamp()
-      });
-      transaction.update(myUserRef, { "wallet.earned": currentEarned + 100 });
-
-      const txRef = doc(collection(db, "users", currentUid, "transactions"));
-      transaction.set(txRef, {
-        type: "referral",
-        direction: "credit",
-        title: `Referral reward — @${referredUser.username} deposited ₦500+`,
-        amount: 100,
-        status: "successful",
-        createdAt: serverTimestamp()
-      });
-    });
-  } catch (err) {
-    // Most likely a permissions rejection (rules doing their job) or a
-    // race with another tab — either way, not worth surfacing to the user.
-    console.error("Referral reward error:", err);
-    rewardAttempted.delete(referredUser.uid); // allow a retry on the next snapshot
-  }
-}
-
 function subscribeToReferredUsers(username) {
   if (unsubscribeReferredUsers) unsubscribeReferredUsers();
 
@@ -567,11 +523,6 @@ function subscribeToReferredUsers(username) {
   unsubscribeReferredUsers = onSnapshot(referredQuery, (snap) => {
     referredUsersCache = snap.docs.map((d) => {
       const data = d.data();
-      // lifetimeDeposited is the running, never-decreasing total set by
-      // the deposit-verification Edge Function (see wallet.js) — falls
-      // back to the current spendable balance if that field isn't being
-      // written yet, so the feature still does *something* meaningful
-      // in the meantime rather than silently never firing.
       const depositSignal = data.lifetimeDeposited ?? data.wallet?.deposit ?? 0;
 
       return {
@@ -583,10 +534,6 @@ function subscribeToReferredUsers(username) {
     });
 
     recomputeAndRender();
-
-    referredUsersCache
-      .filter((ref) => ref.qualifies && !rewardedUidSet.has(ref.uid))
-      .forEach((ref) => processReward(ref));
   }, (err) => {
     console.error("Referred users listener error:", err);
     referredUsersCache = [];
@@ -601,7 +548,6 @@ function subscribeToRewards() {
     collection(db, "users", currentUid, "referralRewards"),
     (snap) => {
       rewardedUidSet = new Set(snap.docs.map((d) => d.id));
-      snap.docs.forEach((d) => rewardAttempted.add(d.id));
       recomputeAndRender();
     },
     (err) => {
