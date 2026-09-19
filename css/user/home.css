@@ -846,7 +846,7 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 99px;
+  gap: 9px;
   width: 100%;
   min-height: 48px;
   border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
