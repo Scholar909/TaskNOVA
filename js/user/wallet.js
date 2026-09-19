@@ -861,6 +861,15 @@ virtualProceedBtn.addEventListener("click", async () => {
 
     vmReference = result.reference;
     vmSettled = false;
+
+    await setDoc(doc(db, "virtualAccountPayments", vmReference), {
+      userId: currentUser.uid,
+      reference: vmReference,
+      amount: Number(result.flutterwaveAmount),
+      status: "pending",
+      createdAt: serverTimestamp()
+    });
+    
     vmBankName.textContent = result.bankName || "—";
     vmAccountNumber.textContent = result.accountNumber || "—";
     vmAccountName.textContent = result.accountName || "—";
