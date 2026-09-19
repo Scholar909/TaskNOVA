@@ -1,6 +1,18 @@
 /* =========================================================
    TASKNOVA — REQUEST TASK PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Submitting a request now also sends an EmailJS alert to
+      admin's inbox (best-effort — never blocks or fails the
+      actual submission, since the Firestore write is the real
+      record admin/tasks.html's Task Requests tab already reads).
+   2. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   3. Tawk.to visitor auto-fill added (same block as every other
+      reworked page).
+   4. SKRED_ADVERTISE_LINK renamed to DEFAULT_BANNER_LINK (same
+      fix already applied elsewhere).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -155,15 +167,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -264,14 +278,98 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   floatingAd.style.display = "none";
 });
 
-// Floating support now opens the Tawk.to chat widget instead of linking to Skred
-// (Skred is used only for ad banner inquiries — see the button on this page).
+// Floating support opens the Tawk.to chat widget.
 supportFab?.addEventListener("click", (e) => {
   e.preventDefault();
   if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
     Tawk_API.toggle();
   }
 });
+
+/* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   every other reworked page.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
+
+/* ---------------------------------------------------------
+   EMAILJS — admin alert on new task request
+   Loaded the same way Veltrix/Flutterwave's scripts are —
+   injected here rather than assumed to already be in the page's
+   <head>. EmailJS is built for this exact case (send straight from
+   the browser with a public key, no backend needed), so this
+   skips Supabase entirely — there's no secret to protect.
+   --------------------------------------------------------- */
+const EMAILJS_SERVICE_ID = "service_9rc53vl";
+const EMAILJS_TEMPLATE_ID = "template_jb7jqv8";
+// TODO: EmailJS's public key (Account -> API Keys in the EmailJS
+// dashboard) hasn't been provided yet — every emailjs.send() call
+// below will fail (visibly, in the console; silently to the user,
+// by design) until this is filled in.
+const EMAILJS_PUBLIC_KEY = "U1tt86J8H_-S_0QfH";
+
+(function loadEmailJs() {
+  if (window.emailjs || document.querySelector("script[data-emailjs]")) return;
+  const script = document.createElement("script");
+  script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+  script.dataset.emailjs = "true";
+  script.async = true;
+  document.head.appendChild(script);
+})();
+
+// Best-effort only — a failed email never blocks or fails the
+// request submission itself, since the Firestore write (already
+// committed by the time this runs) is the real record
+// admin/tasks.html's Task Requests tab reads.
+async function sendAdminRequestAlert(requestData, requesterInfo) {
+  try {
+    if (!window.emailjs) {
+      console.warn("EmailJS script not loaded yet — skipping admin alert email.");
+      return;
+    }
+    await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      requester_name: requesterInfo.fullName || "A TaskNOVA user",
+      requester_username: requesterInfo.username || "",
+      requester_email: requesterInfo.email || "",
+      what_wanted: requestData.whatWanted,
+      instructions: requestData.instructions,
+      platform: requestData.platform,
+      workers_required: String(requestData.workersRequired),
+      desired_result: requestData.desiredResult,
+      proof_requirements: requestData.proofRequirements.join(", ") || "None specified"
+    }, { publicKey: EMAILJS_PUBLIC_KEY });
+  } catch (err) {
+    console.error("EmailJS admin alert failed (request was still saved):", err);
+  }
+}
 
 /* ---------------------------------------------------------
    FORM MESSAGES
@@ -344,6 +442,7 @@ const workersInput = document.getElementById("requestWorkers");
 const desiredResultInput = document.getElementById("desiredResult");
 
 let currentUser = null;
+let currentUserData = { fullName: "", username: "", email: "" };
 
 function validateForm() {
   if (!whatWantedInput.value.trim()) return "Tell us what you want done.";
@@ -366,7 +465,7 @@ requestForm.addEventListener("submit", async (e) => {
   requestSubmit.disabled = true;
 
   try {
-    await addDoc(collection(db, "taskRequests"), {
+    const requestData = {
       requesterUid: currentUser.uid,
       whatWanted: whatWantedInput.value.trim(),
       instructions: instructionsInput.value.trim(),
@@ -376,7 +475,10 @@ requestForm.addEventListener("submit", async (e) => {
       proofRequirements,
       status: "pending_review",
       createdAt: serverTimestamp()
-    });
+    };
+
+    await addDoc(collection(db, "taskRequests"), requestData);
+    sendAdminRequestAlert(requestData, currentUserData); // fire-and-forget, never blocks the UI below
 
     showMsg("success", "Request submitted! Our admin will review it and reach out if needed.");
     requestForm.reset();
@@ -422,9 +524,18 @@ onAuthStateChanged(auth, (user) => {
     const fullName = data.fullName || "TaskNOVA User";
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
+    currentUserData = { fullName: data.fullName || "", username: data.username || "", email: user.email || "" };
+
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -450,4 +561,30 @@ onAuthStateChanged(auth, (user) => {
      turn it into a real task type, that becomes a normal Post
      Task flow (via the catalogue) or a custom-priced task the
      admin sets up on the requester's behalf.
+
+   - EMAILJS_PUBLIC_KEY is a placeholder — nothing will actually
+     send until the real public key (EmailJS dashboard -> Account
+     -> API Keys) is filled in above.
+
+   - The template param names (requester_name, what_wanted,
+     platform, etc.) are this file's own reasonable guess — they
+     need to match whatever variable names the already-built-and-
+     tested template_jdbogum template actually uses. If the email
+     doesn't render right (blank fields, literal {{tags}} showing),
+     that's the first thing to check — rename the keys in
+     sendAdminRequestAlert to match the template exactly.
+
+   - The template's "To" address is assumed to already be fixed to
+     admin's inbox inside the EmailJS template's own settings (the
+     normal way to do this), so this call only sends content
+     params, no recipient. If the template instead expects the
+     recipient passed in per-send, add a to_email param here with
+     admin's actual address.
+
+   - Not done here, flagged for whenever admin/tasks.html's Task
+     Requests tab is next touched: the review asked for Mark
+     Resolved to capture an explicit Approved/Rejected verdict (not
+     just a free-text note), so admin's email reply and the
+     resolution note agree on outcome. That's a small change to
+     that tab's UI, not this file.
    =========================================================== */
