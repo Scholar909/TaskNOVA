@@ -701,7 +701,7 @@ function payWithFlutterwave(amount, userEmail, userId) {
     tx_ref: txRef,
     amount: amount,
     currency: "NGN",
-    payment_options: "card,banktransfer,ussd",
+    payment_options: "card,banktransfer,ussd,opay",
     meta: {
       user_id: userId,
     },
@@ -799,43 +799,6 @@ function startVmCountdown(expiresAt) {
   tick();
   vmTimerInterval = setInterval(tick, 1000);
 }
-
-function stopVmWatchers() {
-  clearInterval(vmTimerInterval);
-  vmTimerInterval = null;
-  if (vmUnsubscribe) { vmUnsubscribe(); vmUnsubscribe = null; }
-}
-
-function resetVirtualPanel() {
-  stopVmWatchers();
-  vmReference = null;
-  vmSettled = false;
-  vmStepPending.style.display = "none";
-  vmStepAmount.style.display = "";
-  vmCountdown.classList.remove("warn");
-  vmStatus.className = "dm-status";
-  vmStatus.innerHTML = `<i class="bx bx-loader-alt bx-spin"></i> Waiting for your transfer…`;
-  requestAnimationFrame(syncWalletHeight);
-}
-
-function handleVmOutcome(outcome) {
-  vmSettled = true;
-  stopVmWatchers();
-
-  if (outcome === "successful") {
-    vmStatus.className = "dm-status success";
-    vmStatus.innerHTML = `<i class="bx bx-check-circle"></i> Payment successful — your wallet has been credited.`;
-  } else {
-    vmStatus.className = "dm-status fail";
-    vmStatus.innerHTML = outcome === "expired"
-      ? `<i class="bx bx-x-circle"></i> This virtual account expired before payment was received.`
-      : `<i class="bx bx-x-circle"></i> Payment wasn't received — please try again.`;
-  }
-
-  setTimeout(() => { window.location.href = "transactions.html"; }, 1800);
-}
-
-let vmPollInterval = null;
 
 function stopVmWatchers() {
   clearInterval(vmTimerInterval);
