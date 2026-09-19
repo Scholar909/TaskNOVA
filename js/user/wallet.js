@@ -618,29 +618,9 @@ onAuthStateChanged(auth, (user) => {
     console.error("Wallet listener error:", err);
   });
 
-  const txQuery = query(
-    collection(db, "users", user.uid, "transactions"),
-    orderBy("createdAt", "desc"),
-    limit(10)
-  );
+    // Replaces recent transactions listener with the manual verification card
+  renderManualVerificationSection();
 
-  unsubscribeTx = onSnapshot(txQuery, (snap) => {
-    const rows = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        title: data.title || data.type || "Transaction",
-        type: data.type || "default",
-        direction: data.direction || "debit",
-        amount: data.amount || 0,
-        status: data.status || "",
-        date: data.createdAt?.toDate ? data.createdAt.toDate() : null
-      };
-    });
-    renderTransactions(rows);
-  }, (err) => {
-    console.error("Transactions listener error:", err);
-    renderTransactions([]);
-  });
 
   // Lightweight unread check — existence only (limit 1), not a count.
   // Shows/hides the header dot, nothing more.
@@ -656,45 +636,60 @@ onAuthStateChanged(auth, (user) => {
   });
 });
 
-const TX_ICONS = {
-  deposit: "bx-download",
-  withdrawal: "bx-upload",
-  earning: "bx-trending-up",
-  task_payment: "bx-briefcase",
-  airtime: "bx-mobile-alt",
-  data: "bx-wifi",
-  swap: "bx-transfer-alt",
-  referral: "bx-user-plus",
-  refund: "bx-undo",
-  default: "bx-receipt"
-};
+// Renders the Manual Reference Input UI directly into the #txList element
+function renderManualVerificationSection() {
+  const container = document.getElementById("txList");
+  if (!container) return;
 
-function renderTransactions(rows) {
-  const txList = document.getElementById("txList");
-  if (!txList) return;
+  container.innerHTML = `
+    <div style="padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); display: grid; gap: 12px;">
+      <strong style="font-size: 0.95rem;">Verify Missing Payment</strong>
+      <p style="font-size: 0.8rem; color: var(--text-soft); line-height: 1.4;">Did you complete a transfer or payment that hasn't been credited yet? Enter your transaction reference below to verify manually.</p>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <input 
+          type="text" 
+          id="manualRefInput" 
+          placeholder="Enter transaction reference (e.g. tx_ref)" 
+          style="flex: 1; min-width: 200px; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 0.88rem;"
+        />
+        <button 
+          id="verifyManualBtn" 
+          type="button" 
+          style="min-height: 46px; padding: 0 20px; border: none; border-radius: 12px; background: var(--primary); color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer;"
+        >
+          Verify Payment
+        </button>
+      </div>
+    </div>
+  `;
 
-  if (!rows.length) {
-    txList.innerHTML = `<div class="tx-empty">No wallet activity yet.</div>`;
+  document.getElementById("verifyManualBtn")?.addEventListener("click", handleManualVerification);
+}
+
+// Handler for manual verification
+async function handleManualVerification() {
+  const refInput = document.getElementById("manualRefInput");
+  const verifyBtn = document.getElementById("verifyManualBtn");
+  const txRef = refInput ? refInput.value.trim() : "";
+
+  if (!txRef) {
+    alert("Please enter a valid transaction reference.");
     return;
   }
 
-  txList.innerHTML = rows.map((tx) => {
-    const kind = tx.direction === "credit" ? "credit" : tx.direction === "pending" ? "pending" : "debit";
-    const icon = TX_ICONS[tx.type] || TX_ICONS.default;
-    const sign = kind === "credit" ? "+" : kind === "pending" ? "" : "−";
-    const when = formatRelativeTime(tx.date);
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = "Verifying...";
+  }
 
-    return `
-      <div class="tx-row ${kind}">
-        <div class="tx-icon"><i class="bx ${icon}"></i></div>
-        <div class="tx-info">
-          <strong>${tx.title}</strong>
-          <span>${when}${tx.status ? " · " + tx.status : ""}</span>
-        </div>
-        <div class="tx-amount">${sign}${formatNaira(tx.amount)}</div>
-      </div>`;
-  }).join("");
+  await verifyTransaction(txRef, null);
+
+  if (verifyBtn) {
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = "Verify Payment";
+  }
 }
+
 
 /* ===========================================================
    DEPOSIT — three methods sharing one panel + one panel-msg
@@ -727,14 +722,9 @@ depositAmountInput.addEventListener("input", () => {
 
 depositForm.addEventListener("submit", (e) => {
   e.preventDefault();
-  // The other two methods drive themselves entirely through their own
-  // buttons (type="button") — this handler only ever needs to fire for
-  // Instant Automatic, but Enter-inside-a-text-input can still trigger a
-  // form submit regardless of which panel is visible, hence the guard.
   if (depositMethodSelect.value !== "automatic") return;
 
   clearPanelMsg(depositMsg);
-
   const amount = Number(depositAmountInput.value);
   if (!amount || amount < 100) {
     showPanelMsg(depositMsg, "error", "Enter an amount of at least ₦100.");
@@ -743,6 +733,12 @@ depositForm.addEventListener("submit", (e) => {
 
   if (!currentUser) return;
 
+  payWithFlutterwave(amount, currentUser.email, currentUser.uid);
+});
+
+function payWithFlutterwave(amount, userEmail, userId) {
+  const txRef = `${userId}_${Date.now()}`;
+
   if (typeof FlutterwaveCheckout === "undefined") {
     showPanelMsg(depositMsg, "error", "Payment popup failed to load. Check your connection and try again.");
     return;
@@ -750,57 +746,45 @@ depositForm.addEventListener("submit", (e) => {
 
   setBtnLoading(depositSubmit, true);
 
-  // Flutterwave needs a unique reference generated up front (unlike
-  // Paystack, which generates its own) — this is what verification is
-  // keyed on server-side, so it has to be unpredictable and unique.
-  const txRef = `tasknova-${currentUser.uid}-${Date.now()}`;
-
   FlutterwaveCheckout({
-    public_key: FLUTTERWAVE_PUBLIC_KEY,
+    public_key: FLUTTERWAVE_PUBLIC_KEY, // Uses configured FLUTTERWAVE_PUBLIC_KEY
     tx_ref: txRef,
     amount: amount,
     currency: "NGN",
     payment_options: "card,banktransfer,ussd",
+    meta: {
+      user_id: userId,
+    },
     customer: {
-      email: currentUser.email,
-      name: currentUserData.fullName || currentUser.email
+      email: userEmail,
     },
-    customizations: {
-      title: "TaskNOVA Wallet Deposit",
-      description: "Add funds to your TaskNOVA wallet"
-    },
-    meta: { uid: currentUser.uid, purpose: "wallet_deposit" },
-    callback: function (response) {
-      // Payment succeeded at Flutterwave's end. The wallet is NOT credited
-      // yet — it's credited only after our backend verifies this reference
-      // server-side.
-      verifyDepositOnServer(txRef);
-      if (typeof response?.close === "function") response.close();
+    callback: async function (data) {
+      await verifyTransaction(data.tx_ref, data.transaction_id);
     },
     onclose: function () {
       setBtnLoading(depositSubmit, false);
-    }
+    },
   });
-});
+}
 
-async function verifyDepositOnServer(txRef) {
+// Function to call Supabase Edge Function
+async function verifyTransaction(txRef, transactionId = null) {
   try {
-    const idToken = await currentUser.getIdToken();
-    const result = await callEdgeFunction(EDGE_FN.verifyDeposit, { tx_ref: txRef }, idToken);
+    const response = await fetch("https://esvmdzsnvcjfsnoznyfb.supabase.co/functions/v1/verify-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tx_ref: txRef, transaction_id: transactionId }),
+    });
 
-    if (!result?.success) {
-      throw new Error(result?.error || "Verification failed.");
+    const result = await response.json();
+    if (response.ok) {
+      alert(`Success: ${result.message}`);
+      window.location.reload();
+    } else {
+      alert(`Verification failed: ${result.error}`);
     }
-
-    showPanelMsg(depositMsg, "success", "Payment verified! Your wallet has been credited.");
-    depositForm.reset();
-    depositChips.querySelectorAll(".amount-chip").forEach((c) => c.classList.remove("active"));
-    setTimeout(() => { window.location.href = "transactions.html"; }, 1500);
   } catch (err) {
-    console.error("Deposit verification error:", err);
-    showPanelMsg(depositMsg, "error", "We received your payment but couldn't confirm it automatically. Contact support with your reference: " + txRef);
-  } finally {
-    setBtnLoading(depositSubmit, false);
+    alert("Network error while verifying payment.");
   }
 }
 
