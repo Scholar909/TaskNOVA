@@ -389,8 +389,31 @@ const NIGERIAN_BANK_NAMES = [
   "United Bank for Africa (UBA)", "Unity Bank", "Wema Bank / ALAT", "Zenith Bank"
 ];
 
+// Replace the bank selection logic in wallet_4.js
 const bankSelect = document.getElementById("bankSelect");
 const bankCodeInput = document.getElementById("bankCode");
+const bankSearchInput = document.getElementById("bankSearch");
+
+let allBanks = [];
+
+function renderBankOptions(banks) {
+  bankSelect.innerHTML = `<option value="" disabled selected>Select your bank</option>`;
+  
+  if (!banks || banks.length === 0) {
+    const opt = document.createElement("option");
+    opt.disabled = true;
+    opt.textContent = "No matching banks found";
+    bankSelect.appendChild(opt);
+    return;
+  }
+
+  banks.forEach((bank) => {
+    const opt = document.createElement("option");
+    opt.value = bank.code;
+    opt.textContent = bank.name;
+    bankSelect.appendChild(opt);
+  });
+}
 
 async function loadWithdrawalBanks() {
   bankSelect.innerHTML = `<option value="" disabled selected>Loading banks…</option>`;
@@ -398,13 +421,8 @@ async function loadWithdrawalBanks() {
   try {
     const idToken = await currentUser.getIdToken();
     const banks = await callEdgeFunction(EDGE_FN.listBanks, {}, idToken);
-    bankSelect.innerHTML = `<option value="" disabled selected>Select your bank</option>`;
-    (banks || []).forEach((bank) => {
-      const opt = document.createElement("option");
-      opt.value = bank.code;
-      opt.textContent = bank.name;
-      bankSelect.appendChild(opt);
-    });
+    allBanks = banks || [];
+    renderBankOptions(allBanks);
     bankSelect.disabled = false;
   } catch (err) {
     console.error("Load banks error:", err);
@@ -412,10 +430,21 @@ async function loadWithdrawalBanks() {
   }
 }
 
+// Live Filter as user types
+bankSearchInput?.addEventListener("input", () => {
+  const query = bankSearchInput.value.toLowerCase().trim();
+  const filtered = allBanks.filter((bank) => 
+    bank.name.toLowerCase().includes(query) || String(bank.code).includes(query)
+  );
+  renderBankOptions(filtered);
+  resetAccountResolution();
+});
+
 bankSelect.addEventListener("change", () => {
   bankCodeInput.value = bankSelect.value;
   resetAccountResolution();
 });
+
 
 /* ---------------------------------------------------------
    WALLET TABS
