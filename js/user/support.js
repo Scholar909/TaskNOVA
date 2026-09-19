@@ -385,6 +385,7 @@ chatSupportBtn.addEventListener("click", () => {
    --------------------------------------------------------- */
 const ticketForm = document.getElementById("ticketForm");
 const ticketNameInput = document.getElementById("ticketName");
+const ticketUsernameInput = document.getElementById("ticketUsername");
 const ticketEmailInput = document.getElementById("ticketEmail");
 const ticketSubjectSelect = document.getElementById("ticketSubject");
 const ticketMessageInput = document.getElementById("ticketMessage");
@@ -474,6 +475,7 @@ ticketForm.addEventListener("submit", async (e) => {
   try {
     await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SUPPORT_TEMPLATE_ID, {
       requester_name: ticketNameInput.value,
+      requester_username: ticketUsernameInput.value,
       requester_email: ticketEmailInput.value,
       subject: subjectLabel,
       message
@@ -525,11 +527,12 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    // accountType/institutionAbbr are retired site-wide (no more
-    // Student/Teacher/None distinction) — show the username instead.
     if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
+    
+    // Populates fields from Firestore data
     ticketNameInput.value = fullName;
+    ticketUsernameInput.value = data.username || "";
 
     if (!tawkSynced) {
       tawkSynced = true;
@@ -540,7 +543,6 @@ onAuthStateChanged(auth, (user) => {
   });
 
   // Lightweight unread check — existence only (limit 1), not a count.
-  // Shows/hides the header dot, nothing more.
   const unreadCheckQuery = query(
     collection(db, "users", user.uid, "notifications"),
     where("read", "==", false),
