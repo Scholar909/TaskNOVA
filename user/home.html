@@ -234,18 +234,89 @@
         </div>
       </section>
 
-      <!-- ================= DATA & AIRTIME (Veltrix widget) ================= -->
-      <div class="veltrix-card reveal delay-1">
-        <div class="vc-icon"><i class="bx bx-mobile-alt"></i></div>
-        <div class="vc-copy">
-          <strong>Buy Data &amp; Airtime</strong>
-          <span>Affordable data and airtime plans, all networks.</span>
-        </div>
-        <button type="button" class="vc-btn" data-veltrix-open>
-          Buy Now <i class="bx bx-chevron-right"></i>
-        </button>
+      <!-- ================= DATA & AIRTIME UTILITY CARD ================= -->
+<div class="v-utility-card reveal delay-1" id="vUtilityCard">
+  <div class="v-utility-header">
+    <div class="v-utility-icon"><i class="bx bx-mobile-alt"></i></div>
+    <div class="v-utility-title">
+      <strong>Buy Data & Airtime</strong>
+      <span>Buy data or Airtime using your deposit balance (remember, you can always swap your earned balance to deposit).</span>
+    </div>
+  </div>
+
+  <form id="vUtilityForm" class="v-utility-form" onsubmit="return false;">
+    <!-- Phone Input -->
+    <div class="v-form-group">
+      <label for="vPhoneInput">Phone Number</label>
+      <div class="v-input-wrapper">
+        <input type="tel" id="vPhoneInput" placeholder="08012345678" maxlength="11" autocomplete="tel" required />
+        <span class="v-net-badge" id="vNetBadge">Auto</span>
+      </div>
+    </div>
+
+    <!-- Manual Network Options -->
+    <div class="v-form-group">
+      <label>Network Provider</label>
+      <div class="v-net-options" id="vNetOptions">
+        <button type="button" class="v-net-btn" data-network="mtn" data-net-id="1">MTN</button>
+        <button type="button" class="v-net-btn" data-network="airtel" data-net-id="2">Airtel</button>
+        <button type="button" class="v-net-btn" data-network="glo" data-net-id="3">Glo</button>
+        <button type="button" class="v-net-btn" data-network="9mobile" data-net-id="4">9mobile</button>
+      </div>
+    </div>
+
+    <!-- Service Switcher -->
+    <div class="v-form-group">
+      <label for="vTypeSelect">Select Service</label>
+      <select id="vTypeSelect" class="v-select">
+        <option value="airtime">Airtime</option>
+        <option value="data">Data Plan</option>
+      </select>
+    </div>
+
+    <!-- Airtime Section -->
+    <div id="vAirtimeSection" class="v-section">
+      <div class="v-form-group">
+        <label for="vAirtimeAmount">Amount (₦)</label>
+        <input type="number" id="vAirtimeAmount" placeholder="Min ₦50" min="50" step="1" />
+      </div>
+      <div class="v-quick-amounts">
+        <button type="button" class="v-quick-btn" data-amount="100">₦100</button>
+        <button type="button" class="v-quick-btn" data-amount="500">₦500</button>
+        <button type="button" class="v-quick-btn" data-amount="1000">₦1,000</button>
+        <button type="button" class="v-quick-btn" data-amount="2000">₦2,000</button>
+        <button type="button" class="v-quick-btn" data-amount="3000">₦3,000</button>
+      </div>
+    </div>
+
+        <!-- Data Plans Section -->
+    <div id="vDataSection" class="v-section" style="display: none;">
+      <label>Plans</label>
+      
+      <!-- Data Plan Type Filters -->
+      <div class="v-plan-type-filters" id="vPlanTypeFilters">
+        <button type="button" class="v-type-btn active" data-type="SME">SME</button>
+        <button type="button" class="v-type-btn" data-type="Gifting">Gifting</button>
+        <button type="button" class="v-type-btn" data-type="Corporate Gifting">Corporate Gifting</button>
       </div>
 
+      <div class="v-plans-container" id="vPlansContainer">
+        <div class="v-plans-state">Enter phone number or pick a network to view plans.</div>
+      </div>
+    </div>
+
+
+    <!-- Status Message -->
+    <div id="vUtilityStatus" class="v-status-msg" style="display: none;"></div>
+
+    <!-- Payment Action -->
+    <button type="submit" class="v-pay-btn" id="vPayBtn" disabled>
+      Pay ₦0.00
+    </button>
+  </form>
+</div>
+
+      
       <!-- ================= RECENT TRANSACTIONS ================= -->
       <section class="transactions-section">
         <div class="section-label reveal">
