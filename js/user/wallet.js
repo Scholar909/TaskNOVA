@@ -755,6 +755,7 @@ const virtualCancelBtn = document.getElementById("virtualCancelBtn");
 const virtualFeeNote = document.getElementById("virtualFeeNote");
 
 let vmTimerInterval = null;
+let vmPollInterval = null;
 let vmUnsubscribe = null;
 let vmExpiresAt = null;
 let vmReference = null;
