@@ -738,7 +738,7 @@ async function verifyTransaction(txRef, transactionId = null) {
 }
 
 /* ===== METHOD 2: VIRTUAL ACCOUNT DEPOSIT ===== */
-const VIRTUAL_DEPOSIT_FEE = 10;
+const VIRTUAL_DEPOSIT_FEE = 0;
 
 const virtualAmountInput = document.getElementById("virtualAmount");
 const virtualProceedBtn = document.getElementById("virtualProceedBtn");
@@ -920,7 +920,7 @@ const mtSenderName = document.getElementById("mtSenderName");
 const manualPaidBtn = document.getElementById("manualPaidBtn");
 const manualCancelBtn = document.getElementById("manualCancelBtn");
 
-const MANUAL_TRANSFER_FEE = 20;
+const MANUAL_TRANSFER_FEE = 50;
 let manualDestinationBank = null;
 let manualPendingAmount = 0;
 
