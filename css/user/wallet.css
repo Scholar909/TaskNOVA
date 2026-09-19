@@ -617,7 +617,15 @@ img { display: block; max-width: 100%; }
 .account-status-icon.valid { color: var(--success); }
 .account-status-icon.invalid { color: var(--danger); }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Replace existing @keyframes spin in wallet.css */
+@keyframes spin {
+  from {
+    transform: translateY(-50%) rotate(0deg);
+  }
+  to {
+    transform: translateY(-50%) rotate(360deg);
+  }
+}
 
 .resolved-name-box {
   display: none;
