@@ -598,55 +598,67 @@ function initUtilityWidget() {
     }
   }
 
-    form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (payBtn.disabled) return;
+/* =========================================================
+   UPDATED UTILITY FORM SUBMIT IN home_6.js
+   ========================================================= */
 
-    payBtn.disabled = true;
-    payBtn.textContent = "Processing...";
-    statusMsg.style.display = "none";
+let currentUsername = "USER"; // Updated dynamically inside auth / user snapshot
 
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("User session expired. Please refresh and log in.");
+// Inside onSnapshot(doc(db, "users", user.uid), ...):
+// currentUsername = data.username || "USER";
 
-      const idToken = await user.getIdToken();
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (payBtn.disabled) return;
 
-      // Generate reference with required prefix
-      const refPrefix = state.type === "data" ? "TASKNOVA_ORDER_" : "TASKNOVA_AIR_";
-      const reference = `${refPrefix}${Date.now()}`;
+  payBtn.disabled = true;
+  payBtn.textContent = "Processing...";
+  statusMsg.style.display = "none";
 
-      const payload = {
-        type: state.type,
-        network: state.type === "data" ? state.netId : state.network,
-        phone: state.phone,
-        amount: state.airtimeAmount,
-        plan_id: state.selectedPlan ? state.selectedPlan.id : null,
-        reference: reference
-      };
+  try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("User session expired. Please refresh and log in.");
 
-      const res = await callEdgeFunction("buy-utility", payload, idToken);
+    const idToken = await user.getIdToken();
 
-      if (res.error) throw new Error(res.error);
+    // Clean username for reference string (alphanumeric only)
+    const cleanUsername = String(currentUsername).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const typeTag = state.type === "data" ? "DATA" : "AIRTIME";
+    
+    // Format: TASKNOVA_<USERNAME>_<TYPE>_<TIMESTAMP>
+    const reference = `TASKNOVA_${cleanUsername}_${typeTag}_${Date.now()}`;
 
-      statusMsg.className = "v-status-msg success";
-      statusMsg.textContent = res.message || "Purchase successful!";
-      statusMsg.style.display = "block";
-      
-      form.reset();
-      state.selectedPlan = null;
-      setNetwork(null);
-      updatePayButton();
+    const payload = {
+      type: state.type,
+      network: state.type === "data" ? state.netId : state.network,
+      phone: state.phone,
+      amount: state.airtimeAmount,
+      plan_id: state.selectedPlan ? state.selectedPlan.id : null,
+      reference: reference
+    };
 
-    } catch (err) {
-      statusMsg.className = "v-status-msg error";
-      statusMsg.textContent = err.message || "Transaction failed. Please try again.";
-      statusMsg.style.display = "block";
-    } finally {
-      payBtn.disabled = false;
-      updatePayButton();
-    }
-  });
+    const res = await callEdgeFunction("buy-utility", payload, idToken);
+
+    if (res.error) throw new Error(res.error);
+
+    statusMsg.className = "v-status-msg success";
+    statusMsg.textContent = res.message || "Purchase successful!";
+    statusMsg.style.display = "block";
+    
+    form.reset();
+    state.selectedPlan = null;
+    setNetwork(null);
+    updatePayButton();
+
+  } catch (err) {
+    statusMsg.className = "v-status-msg error";
+    statusMsg.textContent = err.message || "Transaction failed. Please try again.";
+    statusMsg.style.display = "block";
+  } finally {
+    payBtn.disabled = false;
+    updatePayButton();
+  }
+});
 }
 
 // Call init inside DOM loads / auth state ready
