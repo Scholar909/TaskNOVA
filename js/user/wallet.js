@@ -887,8 +887,14 @@ virtualProceedBtn.addEventListener("click", async () => {
 
   try {
     const idToken = await currentUser.getIdToken();
-    const result = await callEdgeFunction(EDGE_FN.createVirtualAccount, { amount }, idToken);
 
+    const result = await callEdgeFunction(EDGE_FN.createVirtualAccount, {
+      amount,
+      email: currentUser.email,
+      userId: currentUser.uid
+    }, idToken);
+
+    
     vmReference = result.reference;
     vmSettled = false;
     vmBankName.textContent = result.bankName || "—";
