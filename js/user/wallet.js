@@ -763,8 +763,7 @@ let vmSettled = false;
 function updateVirtualAmountPreview() {
   const baseAmount = Number(virtualAmountInput.value) || 0;
   if (baseAmount > 0) {
-    const totalToPay = baseAmount + VIRTUAL_DEPOSIT_FEE;
-    if (virtualFeeNote) virtualFeeNote.textContent = `Exact amount to send: ${formatNaira(totalToPay)} (Includes ₦${VIRTUAL_DEPOSIT_FEE} service charge)`;
+    if (virtualFeeNote) virtualFeeNote.textContent = `Exact amount to send: By Flutterwave`;
   } else {
     if (virtualFeeNote) virtualFeeNote.textContent = `A ₦${VIRTUAL_DEPOSIT_FEE} charge will be added to the total amount to send.`;
   }
@@ -865,7 +864,10 @@ virtualProceedBtn.addEventListener("click", async () => {
     vmBankName.textContent = result.bankName || "—";
     vmAccountNumber.textContent = result.accountNumber || "—";
     vmAccountName.textContent = result.accountName || "—";
-    vmAmount.textContent = formatNaira(totalToPay);
+
+    const flutterwaveAmount = Number(result.flutterwaveAmount);
+
+    vmAmount.textContent = formatNaira(flutterwaveAmount);
 
     vmStepAmount.style.display = "none";
     vmStepPending.style.display = "";
