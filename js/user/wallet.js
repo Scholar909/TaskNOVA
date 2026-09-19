@@ -606,7 +606,7 @@ onAuthStateChanged(auth, (user) => {
     console.error("Wallet listener error:", err);
   });
 
-  renderManualVerificationSection();
+    loadRecentWalletTransactions(user.uid);
 
   const unreadCheckQuery = query(
     collection(db, "users", user.uid, "notifications"),
@@ -620,54 +620,125 @@ onAuthStateChanged(auth, (user) => {
   });
 });
 
-function renderManualVerificationSection() {
+function loadRecentWalletTransactions(uid) {
   const container = document.getElementById("txList");
   if (!container) return;
 
-  container.innerHTML = `
-    <div style="padding: 22px 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: var(--shadow-soft); display: grid; gap: 14px;">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <i class="bx bx-search-alt" style="font-size: 1.25rem; color: var(--primary);"></i>
-        <strong style="font-size: 0.95rem; letter-spacing: -0.01em;">Verify Missing Payment</strong>
-      </div>
-      <p style="font-size: 0.8rem; color: var(--text-soft); line-height: 1.55;">
-        Did you complete a transfer or payment that hasn't been credited yet? Enter your transaction reference below to verify manually.
-      </p>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <div class="amount-input-wrap" style="flex: 1; min-width: 220px;">
-          <input 
-            type="text" 
-            id="manualRefInput" 
-            placeholder="Enter transaction reference (e.g. tx_ref)" 
-            style="padding-left: 14px;"
-          />
+  const txQuery = query(
+    collection(db, "users", uid, "transactions"),
+    orderBy("createdAt", "desc"),
+    limit(20)
+  );
+
+  if (unsubscribeTx) unsubscribeTx();
+
+  unsubscribeTx = onSnapshot(txQuery, (snap) => {
+    if (snap.empty) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-soft); font-size: 0.82rem;">
+          No wallet transactions yet.
         </div>
-        <button id="verifyManualBtn" type="button" class="btn btn-primary" style="flex: 0 0 auto; width: auto; min-height: 52px; padding: 0 22px;">
-          <span class="btn-spinner"></span>
-          <span class="btn-label">Verify Payment</span>
-        </button>
+      `;
+      return;
+    }
+
+    const WALLET_TYPES = ["deposit", "withdrawal", "swap", "manual_deposit", "admin_credit", "admin_debit", "refund"];
+
+    const walletTxs = snap.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .filter((tx) => {
+        if (!tx.type) return true;
+        const t = tx.type.toLowerCase();
+        return (
+          WALLET_TYPES.includes(t) ||
+          t.includes("deposit") ||
+          t.includes("withdraw") ||
+          t.includes("swap") ||
+          t.includes("credit") ||
+          t.includes("debit")
+        );
+      })
+      .slice(0, 5); // Maximum of 5 recent wallet receipts
+
+    if (walletTxs.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 24px; color: var(--text-soft); font-size: 0.82rem;">
+          No recent wallet activity found.
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = walletTxs.map((tx) => renderTxItem(tx)).join("");
+  }, (err) => {
+    console.error("Wallet activity listener error:", err);
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px; color: var(--danger); font-size: 0.82rem;">
+        Failed to load recent activity.
+      </div>
+    `;
+  });
+}
+
+function renderTxItem(tx) {
+  const isCredit = tx.direction === "credit" || tx.type === "deposit" || tx.type === "admin_credit";
+  const isPending = tx.status === "pending" || tx.status === "pending_review";
+  const isFailed = tx.status === "failed" || tx.status === "rejected";
+
+  let iconClass = "bx-transfer";
+  let amountPrefix = "";
+  let amountColor = "var(--text)";
+
+  if (isCredit) {
+    iconClass = "bx-down-arrow-alt";
+    amountPrefix = "+";
+    amountColor = "var(--success)";
+  } else if (tx.type === "withdrawal" || tx.direction === "debit") {
+    iconClass = "bx-up-arrow-alt";
+    amountPrefix = "-";
+    amountColor = "var(--text)";
+  } else if (tx.type === "swap") {
+    iconClass = "bx-transfer-alt";
+    amountPrefix = "";
+    amountColor = "var(--primary)";
+  }
+
+  let badgeStyle = "background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success);";
+  let badgeText = "Successful";
+
+  if (isPending) {
+    badgeStyle = "background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning);";
+    badgeText = "Pending";
+  } else if (isFailed) {
+    badgeStyle = "background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger);";
+    badgeText = "Failed";
+  }
+
+  const dateObj = tx.createdAt?.toDate ? tx.createdAt.toDate() : (tx.createdAt ? new Date(tx.createdAt) : null);
+  const formattedTime = formatRelativeTime(dateObj);
+  const title = tx.title || tx.description || (tx.type ? tx.type.replace(/_/g, " ").toUpperCase() : "Wallet Activity");
+
+  return `
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); margin-bottom: 10px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: var(--shadow-soft);">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+        <div style="width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--primary); font-size: 1.2rem; flex-shrink: 0;">
+          <i class="bx ${iconClass}"></i>
+        </div>
+        <div style="min-width: 0;">
+          <strong style="display: block; font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text);">${title}</strong>
+          <span style="font-size: 0.72rem; color: var(--text-soft);">${formattedTime}</span>
+        </div>
+      </div>
+      <div style="text-align: right; flex-shrink: 0; margin-left: 12px;">
+        <div style="font-weight: 700; font-size: 0.88rem; color: ${amountColor};">
+          ${amountPrefix}${formatNaira(tx.amount || 0)}
+        </div>
+        <span style="display: inline-block; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-size: 0.65rem; font-weight: 600; ${badgeStyle}">
+          ${badgeText}
+        </span>
       </div>
     </div>
   `;
-
-  document.getElementById("verifyManualBtn")?.addEventListener("click", handleManualVerification);
-}
-
-async function handleManualVerification() {
-  const refInput = document.getElementById("manualRefInput");
-  const verifyBtn = document.getElementById("verifyManualBtn");
-  const txRef = refInput ? refInput.value.trim() : "";
-
-  if (!txRef) {
-    alert("Please enter a valid transaction reference.");
-    return;
-  }
-
-  if (verifyBtn) setBtnLoading(verifyBtn, true);
-
-  await verifyTransaction(txRef, null);
-
-  if (verifyBtn) setBtnLoading(verifyBtn, false);
 }
 
 /* ===========================================================
