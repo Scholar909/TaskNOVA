@@ -146,8 +146,6 @@ mobileMenu?.querySelectorAll("a").forEach((link) => link.addEventListener("click
 
 /* ---------------------------------------------------------
    MENU GROUP ACCORDION (Account / Earn / Advertise / Support)
-   Only one group is open at a time; tapping an open group's
-   label closes it again.
    --------------------------------------------------------- */
 const menuGroups = document.querySelectorAll(".menu-group");
 
@@ -174,10 +172,6 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 
 /* ---------------------------------------------------------
    DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
-   (Used whenever a paid banner slot is empty. Renamed from the
-   old SKRED_ADVERTISE_LINK name — it already pointed internally,
-   not to Skred, and Skred is being removed from the app entirely
-   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
 const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
@@ -188,9 +182,7 @@ document.querySelectorAll("[data-default-ad]").forEach((el) => {
 });
 
 /* ---------------------------------------------------------
-   FLOATING AD + FLOATING SUPPORT (draggable, position saved)
-   Support sits beneath the ad by default (per spec).
-   Position is shared across pages via the same storage keys.
+   FLOATING AD + FLOATING SUPPORT
    --------------------------------------------------------- */
 function makeDraggable(el, storageKey, defaults) {
   const saved = JSON.parse(localStorage.getItem(storageKey) || "null") || defaults;
@@ -239,7 +231,6 @@ function makeDraggable(el, storageKey, defaults) {
     const rect = el.getBoundingClientRect();
     localStorage.setItem(storageKey, JSON.stringify({ left: rect.left, top: rect.top }));
 
-    // Prevent the click-through-navigation firing right after a real drag
     if (moved) {
       el._suppressClick = true;
       setTimeout(() => { el._suppressClick = false; }, 50);
@@ -273,7 +264,6 @@ if (floatingAd) {
 }
 
 if (supportFab) {
-  // Default position: directly beneath the floating ad
   const supportDefaultTop = window.innerHeight - 160;
   const supportDefaultLeft = window.innerWidth - 96;
   makeDraggable(supportFab, "tasknova-float-support-pos", { left: supportDefaultLeft, top: supportDefaultTop });
@@ -294,10 +284,6 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
 
 /* ---------------------------------------------------------
    TAWK.TO VISITOR AUTO-FILL
-   Pushes the signed-in user's name/email/username to Tawk so any
-   chat opened from this page arrives pre-filled instead of asking
-   for them again. Same block as home.js — copy it onto every
-   other page's auth guard as they're reworked.
    --------------------------------------------------------- */
 function syncTawkVisitor({ fullName, email, username }) {
   const attrs = {
@@ -328,14 +314,10 @@ function syncTawkVisitor({ fullName, email, username }) {
 let tawkSynced = false;
 
 /* ---------------------------------------------------------
-   CONFIG — replace these with your real values before launch
+   CONFIG
    --------------------------------------------------------- */
 const FLUTTERWAVE_PUBLIC_KEY = "FLWPUBK-08a321f68fcf28e8c22d0cfef9050ce6-X";
 
-// Supabase Edge Function names — secret keys (Flutterwave secret key,
-// etc.) live inside these functions' server-side environment only,
-// never here. See the BACKEND NOTES at the end of this file for what
-// each one needs to do; none of them are deployed yet.
 const EDGE_FN = {
   verifyDeposit: "verify-flutterwave-deposit",
   listBanks: "list-banks",
@@ -345,8 +327,6 @@ const EDGE_FN = {
   cancelVirtualAccount: "cancel-flutterwave-virtual-account"
 };
 
-// Flutterwave's inline checkout script — injected here instead of in
-// wallet.html's <head> so this page works without an HTML edit.
 (function loadFlutterwaveScript() {
   if (document.querySelector('script[data-flutterwave-inline]')) return;
   const script = document.createElement("script");
@@ -396,10 +376,7 @@ function setBtnLoading(btn, isLoading) {
 }
 
 /* ---------------------------------------------------------
-   NIGERIAN BANK NAMES (for the manual-transfer sender-bank field
-   only — that field just records what the user typed for admin's
-   review, so it needs no bank code, unlike the withdrawal bank
-   select below).
+   NIGERIAN BANK NAMES
    --------------------------------------------------------- */
 const NIGERIAN_BANK_NAMES = [
   "Access Bank", "Citibank Nigeria", "Ecobank Nigeria", "Fidelity Bank",
@@ -415,11 +392,6 @@ const NIGERIAN_BANK_NAMES = [
 const bankSelect = document.getElementById("bankSelect");
 const bankCodeInput = document.getElementById("bankCode");
 
-// The withdrawal bank list has to come from Flutterwave live (via Supabase)
-// rather than a hardcoded list — Flutterwave's bank codes are completely
-// different from Paystack's, so any static Paystack-code list here would
-// silently send withdrawals to the wrong bank. Called once a signed-in
-// user is available (see onAuthStateChanged below).
 async function loadWithdrawalBanks() {
   bankSelect.innerHTML = `<option value="" disabled selected>Loading banks…</option>`;
   bankSelect.disabled = true;
@@ -442,12 +414,11 @@ async function loadWithdrawalBanks() {
 
 bankSelect.addEventListener("change", () => {
   bankCodeInput.value = bankSelect.value;
-  // Bank changed — any previous account resolution is now stale.
   resetAccountResolution();
 });
 
 /* ---------------------------------------------------------
-   WALLET TABS (Deposit / Withdraw / Swap)
+   WALLET TABS
    --------------------------------------------------------- */
 const walletTabs = document.getElementById("walletTabs");
 const walletViewport = document.getElementById("walletViewport");
@@ -488,7 +459,7 @@ walletResizeObserver.observe(swapForm);
 setTimeout(syncWalletHeight, 80);
 
 /* ---------------------------------------------------------
-   LIVE BALANCES + OUTSTANDING (also feeds withdraw/swap limits)
+   LIVE BALANCES + OUTSTANDING
    --------------------------------------------------------- */
 const depositValueEl = document.getElementById("depositValue");
 const earnedValueEl = document.getElementById("earnedValue");
@@ -499,13 +470,6 @@ const swapAvailableNote = document.getElementById("swapAvailableNote");
 
 /* ---------------------------------------------------------
    INACTIVITY DELETION WARNING BANNER
-   Built dynamically (rather than assuming a specific element
-   exists in wallet.html) and anchored right next to the existing
-   outstanding-balance banner, whose markup this mirrors. This
-   page only DISPLAYS the warning — the actual 1-month-inactive
-   check and the 14-day countdown to deletion are computed by a
-   Supabase scheduled function, not by this page. See the NOTES
-   at the end of this file for that job's full spec.
    --------------------------------------------------------- */
 let deletionWarningBanner = document.getElementById("deletionWarningBanner");
 if (!deletionWarningBanner) {
@@ -569,8 +533,6 @@ onAuthStateChanged(auth, (user) => {
     currentUserData.username = data.username || "";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    // accountType/institutionAbbr are retired site-wide (no more
-    // Student/Teacher/None distinction) — show the username instead.
     if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
@@ -592,9 +554,6 @@ onAuthStateChanged(auth, (user) => {
       depositOutstandingNote.textContent = "";
     }
 
-    // Inactivity deletion warning — deletionWarningAt is set by the (not
-    // yet built) Supabase scheduled function described in this file's
-    // NOTES, once wallet.earned has gone a month without increasing.
     const deletionWarningAt = data.deletionWarningAt?.toDate ? data.deletionWarningAt.toDate() : null;
     if (deletionWarningAt) {
       const daysSinceWarning = Math.floor((Date.now() - deletionWarningAt.getTime()) / 86400000);
@@ -618,12 +577,8 @@ onAuthStateChanged(auth, (user) => {
     console.error("Wallet listener error:", err);
   });
 
-    // Replaces recent transactions listener with the manual verification card
   renderManualVerificationSection();
 
-
-  // Lightweight unread check — existence only (limit 1), not a count.
-  // Shows/hides the header dot, nothing more.
   const unreadCheckQuery = query(
     collection(db, "users", user.uid, "notifications"),
     where("read", "==", false),
@@ -636,7 +591,6 @@ onAuthStateChanged(auth, (user) => {
   });
 });
 
-// Renders the Manual Reference Input UI directly into the #txList element
 function renderManualVerificationSection() {
   const container = document.getElementById("txList");
   if (!container) return;
@@ -670,7 +624,6 @@ function renderManualVerificationSection() {
   document.getElementById("verifyManualBtn")?.addEventListener("click", handleManualVerification);
 }
 
-// Handler for manual verification
 async function handleManualVerification() {
   const refInput = document.getElementById("manualRefInput");
   const verifyBtn = document.getElementById("verifyManualBtn");
@@ -688,7 +641,6 @@ async function handleManualVerification() {
   if (verifyBtn) setBtnLoading(verifyBtn, false);
 }
 
-
 /* ===========================================================
    DEPOSIT — three methods sharing one panel + one panel-msg
    =========================================================== */
@@ -698,7 +650,7 @@ const methodAutomaticEl = document.getElementById("methodAutomatic");
 const methodVirtualEl = document.getElementById("methodVirtual");
 const methodManualEl = document.getElementById("methodManual");
 
-/* ===== METHOD 1: INSTANT AUTOMATIC — Flutterwave Inline Checkout ===== */
+/* ===== METHOD 1: INSTANT AUTOMATIC ===== */
 const depositAmountInput = document.getElementById("depositAmount");
 const depositChips = document.getElementById("depositChips");
 const depositMsg = document.getElementById("depositMsg");
@@ -745,7 +697,7 @@ function payWithFlutterwave(amount, userEmail, userId) {
   setBtnLoading(depositSubmit, true);
 
   FlutterwaveCheckout({
-    public_key: FLUTTERWAVE_PUBLIC_KEY, // Uses configured FLUTTERWAVE_PUBLIC_KEY
+    public_key: FLUTTERWAVE_PUBLIC_KEY,
     tx_ref: txRef,
     amount: amount,
     currency: "NGN",
@@ -765,7 +717,6 @@ function payWithFlutterwave(amount, userEmail, userId) {
   });
 }
 
-// Function to call Supabase Edge Function
 async function verifyTransaction(txRef, transactionId = null) {
   try {
     const response = await fetch("https://esvmdzsnvcjfsnoznyfb.supabase.co/functions/v1/verify-payment", {
@@ -786,11 +737,9 @@ async function verifyTransaction(txRef, transactionId = null) {
   }
 }
 
-/* ===== METHOD 2: MANUAL AUTOMATIC — temporary Flutterwave virtual account =====
-   User transfers to a one-time virtual account. Flutterwave's webhook tells
-   our backend when the transfer lands; the backend flips a Firestore doc's
-   status, which this page listens to in real time — no "I've Paid" button,
-   no polling from the client. See BACKEND NOTES at the bottom. */
+/* ===== METHOD 2: VIRTUAL ACCOUNT DEPOSIT ===== */
+const VIRTUAL_DEPOSIT_FEE = 10;
+
 const virtualAmountInput = document.getElementById("virtualAmount");
 const virtualProceedBtn = document.getElementById("virtualProceedBtn");
 const vmStepAmount = document.getElementById("vmStepAmount");
@@ -803,12 +752,26 @@ const vmAccountName = document.getElementById("vmAccountName");
 const vmAmount = document.getElementById("vmAmount");
 const vmStatus = document.getElementById("vmStatus");
 const virtualCancelBtn = document.getElementById("virtualCancelBtn");
+const virtualFeeNote = document.getElementById("virtualFeeNote");
 
 let vmTimerInterval = null;
 let vmUnsubscribe = null;
 let vmExpiresAt = null;
 let vmReference = null;
 let vmSettled = false;
+
+function updateVirtualAmountPreview() {
+  const baseAmount = Number(virtualAmountInput.value) || 0;
+  if (baseAmount > 0) {
+    const totalToPay = baseAmount + VIRTUAL_DEPOSIT_FEE;
+    if (virtualFeeNote) virtualFeeNote.textContent = `Exact amount to send: ${formatNaira(totalToPay)} (Includes ₦${VIRTUAL_DEPOSIT_FEE} service charge)`;
+  } else {
+    if (virtualFeeNote) virtualFeeNote.textContent = `A ₦${VIRTUAL_DEPOSIT_FEE} charge will be added to the total amount to send.`;
+  }
+}
+
+virtualAmountInput.addEventListener("input", updateVirtualAmountPreview);
+updateVirtualAmountPreview();
 
 function formatCountdown(ms) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
@@ -857,7 +820,6 @@ function resetVirtualPanel() {
 }
 
 function handleVmOutcome(outcome) {
-  // outcome: "successful" | "failed" | "expired"
   vmSettled = true;
   stopVmWatchers();
 
@@ -876,12 +838,14 @@ function handleVmOutcome(outcome) {
 
 virtualProceedBtn.addEventListener("click", async () => {
   clearPanelMsg(depositMsg);
-  const amount = Number(virtualAmountInput.value);
-  if (!amount || amount < 100) {
+  const baseAmount = Number(virtualAmountInput.value);
+  if (!baseAmount || baseAmount < 100) {
     showPanelMsg(depositMsg, "error", "Enter an amount of at least ₦100.");
     return;
   }
   if (!currentUser) return;
+
+  const totalToPay = baseAmount + VIRTUAL_DEPOSIT_FEE;
 
   setBtnLoading(virtualProceedBtn, true);
 
@@ -889,25 +853,24 @@ virtualProceedBtn.addEventListener("click", async () => {
     const idToken = await currentUser.getIdToken();
 
     const result = await callEdgeFunction(EDGE_FN.createVirtualAccount, {
-      amount,
+      amount: totalToPay,
+      creditAmount: baseAmount,
+      fee: VIRTUAL_DEPOSIT_FEE,
       email: currentUser.email,
       userId: currentUser.uid
     }, idToken);
 
-    
     vmReference = result.reference;
     vmSettled = false;
     vmBankName.textContent = result.bankName || "—";
     vmAccountNumber.textContent = result.accountNumber || "—";
     vmAccountName.textContent = result.accountName || "—";
-    vmAmount.textContent = formatNaira(amount);
+    vmAmount.textContent = formatNaira(totalToPay);
 
     vmStepAmount.style.display = "none";
     vmStepPending.style.display = "";
     startVmCountdown(new Date(result.expiresAt));
 
-    // The backend (webhook handler) owns this doc's lifecycle — see
-    // BACKEND NOTES. We only ever read it.
     vmUnsubscribe = onSnapshot(doc(db, "virtualAccountPayments", vmReference), (snap) => {
       const status = snap.data()?.status;
       if (!vmSettled && (status === "successful" || status === "failed" || status === "expired")) {
@@ -941,9 +904,7 @@ virtualCancelBtn.addEventListener("click", async () => {
   }
 });
 
-/* ===== METHOD 3: MANUAL TRANSFER — admin-approved bank transfer =====
-   No external API involved — this only ever creates a "pending_review"
-   record for an admin to confirm against TaskNOVA's real bank statement. */
+/* ===== METHOD 3: MANUAL TRANSFER ===== */
 const manualAmountInput = document.getElementById("manualAmount");
 const manualProceedBtn = document.getElementById("manualProceedBtn");
 const mtStepAmount = document.getElementById("mtStepAmount");
@@ -958,7 +919,7 @@ const manualPaidBtn = document.getElementById("manualPaidBtn");
 const manualCancelBtn = document.getElementById("manualCancelBtn");
 
 const MANUAL_TRANSFER_FEE = 20;
-let manualDestinationBank = null; // admin-configured, loaded from Firestore
+let manualDestinationBank = null;
 let manualPendingAmount = 0;
 
 NIGERIAN_BANK_NAMES.forEach((name) => {
@@ -968,8 +929,6 @@ NIGERIAN_BANK_NAMES.forEach((name) => {
   mtSenderBank.appendChild(opt);
 });
 
-// TaskNOVA's receiving bank account for manual transfers — set by an admin
-// in Firestore at settings/manualTransferBank { bankName, accountNumber, accountName }.
 onSnapshot(doc(db, "settings", "manualTransferBank"), (snap) => {
   manualDestinationBank = snap.exists() ? snap.data() : null;
 }, (err) => {
@@ -1061,7 +1020,7 @@ manualPaidBtn.addEventListener("click", async () => {
   }
 });
 
-/* ===== COPY-TO-CLIPBOARD (account number buttons in methods 2 & 3) ===== */
+/* ===== COPY-TO-CLIPBOARD ===== */
 document.querySelectorAll(".dm-copy-btn").forEach((btn) => {
   btn.addEventListener("click", async () => {
     const target = document.getElementById(btn.dataset.copyTarget);
@@ -1081,7 +1040,6 @@ document.querySelectorAll(".dm-copy-btn").forEach((btn) => {
   });
 });
 
-/* ===== Enter key inside an amount field proceeds, same as clicking ===== */
 virtualAmountInput.addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   e.preventDefault();
@@ -1093,8 +1051,7 @@ manualAmountInput.addEventListener("keydown", (e) => {
   manualProceedBtn.click();
 });
 
-/* ===== DEPOSIT METHOD SWITCH — must come after all three methods above
-   are fully wired, since switching away from a method resets it. ===== */
+/* ===== DEPOSIT METHOD SWITCH ===== */
 const DEPOSIT_METHOD_NOTES = {
   automatic: "Instant Automatic credits your wallet immediately after payment.",
   virtual: "Transfer to a one-time virtual account — your wallet is credited automatically once the transfer is detected.",
@@ -1204,9 +1161,6 @@ accountNumberInput.addEventListener("input", () => {
   }, 600);
 });
 
-// Resolving a bank account number to a name requires Flutterwave's secret
-// key, so this calls a Supabase Edge Function proxy rather than Flutterwave
-// directly.
 async function resolveBankAccount(bankCode, accountNumber) {
   if (!currentUser) return null;
   const idToken = await currentUser.getIdToken();
@@ -1248,10 +1202,6 @@ withdrawForm.addEventListener("submit", async (e) => {
   setBtnLoading(withdrawSubmit, true);
 
   try {
-    // The client never edits wallet balances directly for withdrawals.
-    // It only creates a request; a Supabase Edge Function verifies the
-    // Earned Balance, deducts it in a Firestore transaction, and
-    // initiates the Flutterwave transfer.
     const idToken = await currentUser.getIdToken();
     await callEdgeFunction(EDGE_FN.requestWithdrawal, {
       amount,
@@ -1275,9 +1225,6 @@ withdrawForm.addEventListener("submit", async (e) => {
 
 /* ===========================================================
    SWAP — Earned Balance -> Deposit Balance
-   Pure internal wallet movement: no external API/secret involved,
-   so this runs safely as a client-side Firestore transaction
-   (protect it with matching Firestore security rules).
    =========================================================== */
 const swapAmountInput = document.getElementById("swapAmount");
 const swapPreview = document.getElementById("swapPreview");
@@ -1366,181 +1313,3 @@ swapForm.addEventListener("submit", async (e) => {
     setBtnLoading(swapSubmit, false);
   }
 });
-
-/* ===========================================================
-   BACKEND NOTES (read before going live)
-   ===========================================================
-   This file intentionally never touches a Flutterwave secret key.
-   Every server-side call below is a Supabase Edge Function (see
-   js/supabase.js) — none of these are deployed yet. Each one needs
-   to verify the caller's Firebase ID token (sent as a Bearer header
-   by callEdgeFunction) before doing anything privileged; Firebase
-   Admin SDK can run inside a Deno/Supabase Edge Function for this,
-   or the token can be checked manually against Google's JWKS.
-
-   1. verify-flutterwave-deposit({ tx_ref })
-      - Verify: GET https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref=...
-        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>"
-      - If status is "successful" and the amount/currency match what's
-        expected, credit the user's wallet.deposit using the Outstanding
-        Priority Rule (clear outstanding first, remainder to deposit),
-        increment users/{uid}.lifetimeDeposited by the full deposited
-        amount (this is a separate, never-decreasing counter — refer.js's
-        referral-reward feature depends on it), then write a
-        "transactions" doc (type: "deposit", direction: "credit").
-      - Reject if tx_ref was already processed (idempotency) — Flutterwave
-        can call your webhook AND the client can call this function for the
-        same payment, so this function and the webhook (see METHOD 2) must
-        both check for an already-settled record before crediting twice.
-
-   2. list-banks()
-      - Call: GET https://api.flutterwave.com/v3/banks/NG
-        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>"
-      - Return the bank list as [{ name, code }], mapped from Flutterwave's
-        response shape. This is what populates the withdrawal bank select —
-        without it deployed, that dropdown just shows "Bank list unavailable."
-      - Cheap to cache for a few hours (bank lists rarely change) rather than
-        hitting Flutterwave on every page load, if Supabase's own caching or
-        a small KV table is available.
-
-   3. resolve-bank-account({ bank_code, account_number })
-      - Call: POST https://api.flutterwave.com/v3/accounts/resolve
-        with "Authorization: Bearer <FLUTTERWAVE_SECRET_KEY>",
-        body { account_number, account_bank: bank_code }
-      - Return { account_name } on success, or { error } on failure.
-
-   4. request-withdrawal({ amount, bank_code, bank_name, account_number, account_name })
-      - Re-check the caller's Earned Balance server-side (never trust the client).
-      - Enforce minimum ₦500 and the 5% fee.
-      - Deduct wallet.earned in a Firestore transaction, write a
-        "transactions" doc (type: "withdrawal", direction: "debit", status: "pending").
-      - Call Flutterwave's Transfers endpoint (POST https://api.flutterwave.com/v3/transfers)
-        to disburse automatically; until that's wired up, an admin can fulfill
-        the request manually within 24–48 hours per the current fallback plan
-        (see admin/finance.html's Withdrawals tab — it already expects this
-        exact transactions doc shape).
-
-   Update FLUTTERWAVE_PUBLIC_KEY above (already set) and deploy each of the
-   four functions above with `supabase functions deploy <name>` — the EDGE_FN
-   object's values are their expected slugs.
-
-   ===========================================================
-   METHOD 2 — MANUAL AUTOMATIC (Flutterwave virtual account)
-   ===========================================================
-   5. create-flutterwave-virtual-account({ amount })
-      - Call Flutterwave's "Create a Virtual Account" endpoint for a
-        one-time (not permanent) NGN account, scoped to this exact amount.
-      - Create a Firestore doc at virtualAccountPayments/{reference}
-        (reference = Flutterwave's tx_ref/order_ref) with:
-          { uid, amount, status: "pending", createdAt, expiresAt }
-      - Return { reference, accountNumber, bankName, accountName, expiresAt }
-        to the client — expiresAt should match whatever TTL you set on the
-        virtual account itself (the client's countdown is cosmetic only;
-        the real deadline must be enforced server-side too).
-
-   6. Flutterwave webhook handler (a separate Supabase Edge Function with its
-      own public URL, configured directly in Flutterwave's dashboard — not
-      called by this client at all)
-      - Verify the webhook's verif-hash header against your Flutterwave
-        secret hash before trusting the payload.
-      - On a successful charge for a known reference: credit
-        wallet.deposit (Outstanding Priority Rule, same as Method 1),
-        increment users/{uid}.lifetimeDeposited by the deposited amount
-        (same counter Method 1 updates — see its note above), write a
-        "transactions" doc (type: "deposit", direction: "credit"),
-        and update virtualAccountPayments/{reference}.status to "successful".
-      - On failure, or a scheduled Supabase function when "now > expiresAt"
-        and the doc is still "pending": set status to "failed" or "expired".
-      - This status field is the only thing the client listens to — it
-        never polls Flutterwave itself and never sees a secret key.
-      - Webhooks aren't set up yet at all (flagged separately) — this
-        handler doesn't exist yet, so right now nothing actually confirms a
-        virtual-account payment automatically.
-
-   7. cancel-flutterwave-virtual-account({ reference })
-      - Best-effort: mark virtualAccountPayments/{reference}.status as
-        "cancelled" (only if it's still "pending" — never overwrite a
-        result that already landed) so a late webhook can't resurrect it.
-        The client has already reset its own UI by the time this call
-        goes out, so failures here are logged, not surfaced to the user.
-
-   ===========================================================
-   METHOD 3 — MANUAL TRANSFER (admin-approved)
-   ===========================================================
-   No Edge Function is required for the user-facing half — the client
-   writes directly to two Firestore collections (same lightweight pattern
-   as Post Task / Swap), protected by Firestore rules that only allow a
-   user to create (never update/delete) their own manualDeposits + pending
-   transactions doc:
-
-   - manualDeposits/{id}: { uid, amount, fee, totalExpected,
-     destinationBank, senderBank, senderName, status: "pending_review",
-     createdAt }
-   - users/{uid}/transactions/{id}: mirrors it for the Recent Wallet
-     Activity list and transactions.html (direction: "pending"), storing
-     manualDepositId pointing back to the manualDeposits doc (its own id
-     is auto-generated, not shared with the deposit doc's id).
-
-   Approve/Reject on this collection are already handled entirely by
-   admin/manual-transactions.html's Manual Deposits tab (client-side
-   Firestore writes, no backend function). That Approve action needs
-   one more field added to what it already writes: increment
-   users/{uid}.lifetimeDeposited by `amount` alongside the existing
-   wallet.deposit credit — it doesn't yet, which is a gap flagged in
-   refer.js's own notes (referral rewards depend on this counter
-   being accurate across every deposit path, not just Methods 1 & 2
-   here). settings/manualTransferBank { bankName, accountNumber,
-   accountName } is populated from admin/settings.html and read live
-   by this page.
-
-   ===========================================================
-   METHOD 4 — INACTIVITY-BASED AUTO-DELETION (Supabase scheduled)
-   ===========================================================
-   This page only shows the deletionWarningBanner above when
-   deletionWarningAt is set — it never sets that field itself, and
-   it never deletes anything. The actual logic needs to run on a
-   schedule regardless of whether the user ever opens the app
-   again, so it belongs entirely in a Supabase scheduled Edge
-   Function (cron), not any page:
-
-   8. inactivity-sweep() — run daily
-      - For every user where wallet.earned last increased more than
-        30 days ago (track this via lastEarnedAt, which every
-        earned-crediting write across the app needs to set —
-        Force Pay in admin/reports-support.js, task-submission
-        approval, refer.js's referral reward, etc. — flag this the
-        same way lifetimeDeposited was flagged for deposits) AND
-        deletionWarningAt is not yet set: set
-        deletionWarningAt = now, and write a notification to
-        users/{uid}/notifications warning them (14 days, will be
-        deleted, earn something to cancel it).
-      - For every user where deletionWarningAt IS set AND
-        lastEarnedAt is still <= deletionWarningAt (no new earning
-        since the warning fired) AND now - deletionWarningAt >= 14
-        days: perform the SAME deletion this page's Delete Account
-        button performs manually on profile.js — wipe their own
-        Firestore doc + subcollections, and write an adminAlerts
-        doc (type: "account_deletion_auto", same fields) so there's
-        still a record of it, even though this path runs with
-        elevated privileges and could delete the Firebase Auth
-        account directly too (profile.js's manual path deliberately
-        doesn't, to avoid a reauth prompt — this automated path has
-        no such UX constraint, so it's reasonable for it to just
-        finish the job via the Firebase Admin SDK).
-      - For every user where deletionWarningAt IS set but
-        lastEarnedAt has since moved past it (they earned again):
-        clear deletionWarningAt back to null — they're active again.
-
-   ===========================================================
-   RELATED — TRANSACTION HISTORY RETENTION (not this file's job)
-   ===========================================================
-   A separate, unrelated Supabase scheduled function needs to purge
-   transaction history older than 3 months on a rolling basis
-   (oldest batch clears every 3 months) across every user's
-   transactions subcollection — this wallet page and transactions.js
-   both just read whatever's there, neither needs to know the sweep
-   is happening. Noted here only so the two scheduled jobs (this one
-   and the inactivity sweep above) aren't confused for the same
-   thing — they're independent, and the retention sweep does NOT
-   look at lastEarnedAt or delete any user docs.
-   =========================================================== */
