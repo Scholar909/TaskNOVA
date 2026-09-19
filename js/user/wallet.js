@@ -642,22 +642,26 @@ function renderManualVerificationSection() {
   if (!container) return;
 
   container.innerHTML = `
-    <div style="padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); display: grid; gap: 12px;">
-      <strong style="font-size: 0.95rem;">Verify Missing Payment</strong>
-      <p style="font-size: 0.8rem; color: var(--text-soft); line-height: 1.4;">Did you complete a transfer or payment that hasn't been credited yet? Enter your transaction reference below to verify manually.</p>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <input 
-          type="text" 
-          id="manualRefInput" 
-          placeholder="Enter transaction reference (e.g. tx_ref)" 
-          style="flex: 1; min-width: 200px; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 0.88rem;"
-        />
-        <button 
-          id="verifyManualBtn" 
-          type="button" 
-          style="min-height: 46px; padding: 0 20px; border: none; border-radius: 12px; background: var(--primary); color: #fff; font-size: 0.88rem; font-weight: 600; cursor: pointer;"
-        >
-          Verify Payment
+    <div style="padding: 22px 20px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: var(--shadow-soft); display: grid; gap: 14px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <i class="bx bx-search-alt" style="font-size: 1.25rem; color: var(--primary);"></i>
+        <strong style="font-size: 0.95rem; letter-spacing: -0.01em;">Verify Missing Payment</strong>
+      </div>
+      <p style="font-size: 0.8rem; color: var(--text-soft); line-height: 1.55;">
+        Did you complete a transfer or payment that hasn't been credited yet? Enter your transaction reference below to verify manually.
+      </p>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <div class="amount-input-wrap" style="flex: 1; min-width: 220px;">
+          <input 
+            type="text" 
+            id="manualRefInput" 
+            placeholder="Enter transaction reference (e.g. tx_ref)" 
+            style="padding-left: 14px;"
+          />
+        </div>
+        <button id="verifyManualBtn" type="button" class="btn btn-primary" style="flex: 0 0 auto; width: auto; min-height: 52px; padding: 0 22px;">
+          <span class="btn-spinner"></span>
+          <span class="btn-label">Verify Payment</span>
         </button>
       </div>
     </div>
@@ -677,17 +681,11 @@ async function handleManualVerification() {
     return;
   }
 
-  if (verifyBtn) {
-    verifyBtn.disabled = true;
-    verifyBtn.textContent = "Verifying...";
-  }
+  if (verifyBtn) setBtnLoading(verifyBtn, true);
 
   await verifyTransaction(txRef, null);
 
-  if (verifyBtn) {
-    verifyBtn.disabled = false;
-    verifyBtn.textContent = "Verify Payment";
-  }
+  if (verifyBtn) setBtnLoading(verifyBtn, false);
 }
 
 
