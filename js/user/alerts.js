@@ -1,6 +1,24 @@
 /* =========================================================
    TASKNOVA — ALERTS PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   2. Tawk.to visitor auto-fill added (same block as every other
+      reworked page).
+   3. SKRED_ADVERTISE_LINK renamed to DEFAULT_BANNER_LINK (same
+      fix already applied elsewhere).
+   4. This page's own display/pagination/mark-as-read logic was
+      already solid — the reason it scored 0 on review isn't a
+      bug here, it's that NOTHING in the rest of the app writes to
+      users/{uid}/notifications yet, so it always shows "No alerts
+      yet" regardless of what's actually happening on the account.
+      The BACKEND NOTE at the end now maps every event the review
+      asked for to exactly which file needs to add the write, with
+      the doc shape to use — not fixed in those other files in this
+      same pass (see chat for why), but fully specified so it's a
+      quick follow-up wherever each one is next touched.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -158,15 +176,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -267,14 +287,47 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   floatingAd.style.display = "none";
 });
 
-// Floating support now opens the Tawk.to chat widget instead of linking to Skred
-// (Skred is used only for ad banner inquiries — see the button on this page).
+// Floating support opens the Tawk.to chat widget.
 supportFab?.addEventListener("click", (e) => {
   e.preventDefault();
   if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
     Tawk_API.toggle();
   }
 });
+
+/* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   every other reworked page.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
 
 /* ---------------------------------------------------------
    FORMAT HELPERS
@@ -303,10 +356,15 @@ const ALERT_META = {
   task_approval: { icon: "bx-check-circle", severity: "success", label: "Task Approved" },
   task_decline: { icon: "bx-x-circle", severity: "danger", label: "Task Declined" },
   task_repost: { icon: "bx-refresh", severity: "neutral", label: "Task Reposted" },
+  task_expiring: { icon: "bx-time-five", severity: "warning", label: "Task Expiring Soon" },
   submission_approval: { icon: "bx-badge-check", severity: "success", label: "Submission Approved" },
   submission_decline: { icon: "bx-block", severity: "danger", label: "Submission Declined" },
   wrongful_decline_resolution: { icon: "bx-shield-quarter", severity: "success", label: "Wrongful Decline Resolved" },
   withdrawal_status: { icon: "bx-upload", severity: "neutral", label: "Withdrawal Update" },
+  deposit_credited: { icon: "bx-download", severity: "success", label: "Deposit Received" },
+  refund: { icon: "bx-undo", severity: "success", label: "Refund Received" },
+  admin_adjustment: { icon: "bx-slider-alt", severity: "neutral", label: "Balance Adjusted by Admin" },
+  transfer_received: { icon: "bx-shuffle", severity: "success", label: "Transfer Received" },
   ad_approval: { icon: "bx-megaphone-alt", severity: "success", label: "Advertisement Approved" },
   ad_decline: { icon: "bx-megaphone-alt", severity: "danger", label: "Advertisement Declined" },
   ad_edit_approval: { icon: "bx-edit-alt", severity: "success", label: "Ad Edit Approved" },
@@ -314,7 +372,8 @@ const ALERT_META = {
   referral_reward: { icon: "bx-gift", severity: "success", label: "Referral Reward" },
   inactivity_reminder: { icon: "bx-time-five", severity: "neutral", label: "Inactivity Reminder" },
   account_deletion_warning: { icon: "bx-error", severity: "warning", label: "Account Deletion Warning" },
-  account_deletion: { icon: "bx-user-x", severity: "danger", label: "Account Deleted" }
+  account_deletion: { icon: "bx-user-x", severity: "danger", label: "Account Deleted" },
+  other: { icon: "bx-bell", severity: "neutral", label: "Notification" }
 };
 
 function metaFor(type) {
@@ -647,13 +706,20 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
     // Reflect saved preferences in the toggle switches (defaults: email on, device off)
     const prefs = data.notificationPrefs || {};
     setSwitch(emailPrefSwitch, prefs.email !== false);
     setSwitch(devicePrefSwitch, prefs.device === true);
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -694,8 +760,10 @@ onAuthStateChanged(auth, (user) => {
    Expected doc shape at users/{uid}/notifications/{id}:
      {
        type: "task_approval" | "task_decline" | "task_repost" |
-             "submission_approval" | "submission_decline" |
-             "wrongful_decline_resolution" | "withdrawal_status" |
+             "task_expiring" | "submission_approval" |
+             "submission_decline" | "wrongful_decline_resolution" |
+             "withdrawal_status" | "deposit_credited" | "refund" |
+             "admin_adjustment" | "transfer_received" |
              "ad_approval" | "ad_decline" | "ad_edit_approval" |
              "ad_edit_decline" | "referral_reward" |
              "inactivity_reminder" | "account_deletion_warning" |
@@ -709,6 +777,77 @@ onAuthStateChanged(auth, (user) => {
 
    users/{uid}.notificationPrefs (this page reads/writes it directly):
      { email: true, device: false }
+
+   ===========================================================
+   WHY THIS PAGE SCORED 0 ON REVIEW, AND WHAT ACTUALLY GOT FIXED
+   ===========================================================
+   Two separate problems, both real:
+
+   1. A genuine bug in THIS file: metaFor() fell back to
+      ALERT_META.other for any unrecognized type, but "other" was
+      never actually defined in ALERT_META — so the very first
+      notification with a type this page didn't already know about
+      would throw inside renderAlertItem() and the whole list would
+      fail to render. Fixed by adding the "other" entry, and by
+      adding entries for several of the new types the mapping below
+      introduces (task_expiring, deposit_credited, refund,
+      admin_adjustment, transfer_received) so they get a real icon/
+      label instead of falling into the generic bucket.
+
+   2. Nothing anywhere in the app writes a notification doc at all
+      yet — this page's own logic (pagination, grouping, mark-as-
+      read, mark-all, preferences) was already sound, it just had
+      nothing to display. The review's list of "should show an
+      alert for" events, mapped to exactly where each write needs
+      to be added (none of these are done — this is the spec for
+      doing them, one file at a time as each comes up again):
+
+      - Wallet received/deducted (deposit success, withdrawal sent)
+        → wallet.js, right where wallet.deposit / wallet.earned
+        already get credited (Methods 1–3's success paths) and
+        where withdrawal status changes happen (admin/finance.js's
+        Mark Resolved). type: "deposit_credited" / "withdrawal_status".
+      - Admin Increment/Decrement/Transfer
+        → admin/manual-transactions.js, right after each wallet
+        update already committed. type: "admin_adjustment" (for the
+        person adjusted) / "transfer_received" (for the transfer's
+        recipient — the sender already sees their own transaction
+        row, arguably doesn't need a separate alert too).
+      - Task acceptance/decline → admin/tasks.js's Pending tab
+        Approve/Decline actions. type: "task_approval" /
+        "task_decline". Task repost after decline → whichever page
+        eventually implements Edit & Repost. type: "task_repost".
+      - Task expiring → whatever scheduled job eventually expires
+        tasks after 30 days (not built yet anywhere) should notify
+        the employer shortly before expiry. type: "task_expiring".
+      - Ad acceptance/decline/edit approval → admin/advertisements.js's
+        Pending/Edit Requests tabs. type: "ad_approval" /
+        "ad_decline" / "ad_edit_approval" / "ad_edit_decline".
+      - Refund amount received → any refund path (admin/tasks.js and
+        admin/advertisements.js's Decline actions, profile.js/
+        wallet.js's withdrawal-reject refund, etc.) — each already
+        knows the amount at the point it credits the wallet.
+        type: "refund".
+      - Declines in general (submission-level, not task-level) →
+        wherever an employer declines a worker's submission (not
+        yet built as a reworked file). type: "submission_decline";
+        wrongful-decline resolution → admin/reports-support.js's
+        Force Pay / Decline Report actions. type:
+        "submission_approval" (Force Pay) / "wrongful_decline_
+        resolution" (either outcome, worth a second, more specific
+        alert alongside the payout one).
+      - Referral reward → refer.js, right where it already credits
+        wallet.earned inside processReward()'s transaction.
+        type: "referral_reward".
+      - Inactivity warning / account deletion → the Supabase
+        scheduled function specified in wallet.js's own BACKEND
+        NOTES ("METHOD 4"). type: "inactivity_reminder" /
+        "account_deletion_warning" / "account_deletion".
+
+      Explicitly EXCLUDED per the review: the rolling 3-month
+      transaction-history purge should NOT generate a notification —
+      that's routine housekeeping, not something the user needs to
+      be told about.
    ===========================================================
    NOTE ON THE SETTINGS PANEL LOAD:
    The toggles above are set from the live user-doc listener in the

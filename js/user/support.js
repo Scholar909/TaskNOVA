@@ -1,6 +1,28 @@
 /* =========================================================
    TASKNOVA — SUPPORT PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Ticket submission switched from a Cloud Function
+      (submitSupportTicket) to sending directly via EmailJS —
+      the same public-key, no-backend-secret model already used on
+      request-task.js, just with its own separate template. The
+      old Cloud Function is no longer needed at all.
+   2. "Advertisement / Banner" and "Other" added to the ticket
+      subject dropdown ("this is for incase Tawk.to live is
+      offline, so it can be for anything at all") — added
+      defensively via JS (checking for and only adding options
+      that aren't already there) rather than assuming
+      support.html's exact <option> markup.
+   3. Skred removed entirely as a concept, not just reworded —
+      previously this page framed Skred as "used only for ad
+      banner inquiries"; now ad-banner questions are just another
+      ticket subject, handled the same way as everything else.
+   4. accountType/institutionAbbr removed from the menu subtitle,
+      replaced with @username, per the site-wide removal.
+   5. Tawk.to visitor auto-fill added (same block as every other
+      reworked page) alongside the status-check/chat-toggle logic
+      that was already here.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -153,15 +175,17 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   DEFAULT BANNER -> SKRED CONTACT
-   (Used whenever a paid banner slot is empty. Replace SKRED_ADVERTISE_LINK
-   with the Admin's advertising-specific Skred link if it differs from support.)
+   DEFAULT BANNER -> INTERNAL "ADVERTISE WITH US" LINK
+   (Used whenever a paid banner slot is empty. Renamed from the
+   old SKRED_ADVERTISE_LINK name — it already pointed internally,
+   not to Skred, and Skred is being removed from the app entirely
+   as a support/contact channel, so the old name was misleading.)
    --------------------------------------------------------- */
-const SKRED_ADVERTISE_LINK = "../user/post-advertisement.html";
+const DEFAULT_BANNER_LINK = "../user/post-advertisement.html";
 
 document.querySelectorAll("[data-default-ad]").forEach((el) => {
   el.addEventListener("click", () => {
-    window.open(SKRED_ADVERTISE_LINK, "_blank", "noopener");
+    window.open(DEFAULT_BANNER_LINK, "_blank", "noopener");
   });
 });
 
@@ -262,14 +286,49 @@ document.getElementById("floatingAdClose")?.addEventListener("click", (e) => {
   floatingAd.style.display = "none";
 });
 
-// Floating support now opens the Tawk.to chat widget instead of linking to Skred
-// (Skred is used only for ad banner inquiries — see the button on this page).
+// Floating support opens the Tawk.to chat widget.
 supportFab?.addEventListener("click", (e) => {
   e.preventDefault();
   if (window.Tawk_API && typeof Tawk_API.toggle === "function") {
     Tawk_API.toggle();
   }
 });
+
+/* ---------------------------------------------------------
+   TAWK.TO VISITOR AUTO-FILL
+   Pushes the signed-in user's name/email/username to Tawk so any
+   chat opened from this page arrives pre-filled. Same block as
+   every other reworked page — separate concern from the status-
+   check/chat-toggle logic below, which just controls the widget
+   itself.
+   --------------------------------------------------------- */
+function syncTawkVisitor({ fullName, email, username }) {
+  const attrs = {
+    name: fullName || undefined,
+    email: email || undefined,
+    username: username || undefined
+  };
+
+  const apply = () => {
+    if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+      Tawk_API.setAttributes(attrs, (err) => {
+        if (err) console.error("Tawk setAttributes error:", err);
+      });
+    }
+  };
+
+  if (window.Tawk_API && typeof Tawk_API.setAttributes === "function") {
+    apply();
+  } else {
+    window.Tawk_API = window.Tawk_API || {};
+    const previousOnLoad = window.Tawk_API.onLoad;
+    window.Tawk_API.onLoad = function () {
+      if (typeof previousOnLoad === "function") previousOnLoad();
+      apply();
+    };
+  }
+}
+let tawkSynced = false;
 
 /* ---------------------------------------------------------
    TAWK.TO STATUS + CHAT BUTTON
@@ -343,9 +402,44 @@ function clearPanelMsg(el) {
   el.innerHTML = "";
 }
 
-// Cloud Function endpoint — see the backend note at the end of this file
-// for exactly what it needs to do. No email-sending secrets live here.
-const SUBMIT_TICKET_ENDPOINT = "https://REGION-PROJECT.cloudfunctions.net/submitSupportTicket";
+// "This is for incase Tawk.to live is offline, so it can be for anything
+// at all" — makes sure Advertisement/Banner and Other exist as subjects,
+// added defensively (only if not already present) rather than assuming
+// support.html's exact <option> markup.
+function ensureSubjectOption(value, label) {
+  if (!ticketSubjectSelect.querySelector(`option[value="${value}"]`)) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    ticketSubjectSelect.appendChild(opt);
+  }
+}
+ensureSubjectOption("ad_banner", "Advertisement / Banner");
+ensureSubjectOption("other", "Other");
+
+/* ---------------------------------------------------------
+   EMAILJS — sends the ticket straight to Tawk.to's ticket email
+   Replaces the old submitSupportTicket Cloud Function entirely —
+   EmailJS's public-key model needs no backend secret, so there's
+   nothing left for a Cloud Function to protect here. Uses its own
+   template, separate from request-task.js's — service stays the
+   same, only the template differs.
+   --------------------------------------------------------- */
+const EMAILJS_SERVICE_ID = "service_9rc53vl";
+// TODO: fill in manually — this page's own template id (kept
+// separate from request-task.js's template_jdbogum).
+const EMAILJS_SUPPORT_TEMPLATE_ID = "YOUR_SUPPORT_TEMPLATE_ID";
+// TODO: fill in manually — EmailJS dashboard -> Account -> API Keys.
+const EMAILJS_PUBLIC_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
+
+(function loadEmailJs() {
+  if (window.emailjs || document.querySelector("script[data-emailjs]")) return;
+  const script = document.createElement("script");
+  script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+  script.dataset.emailjs = "true";
+  script.async = true;
+  document.head.appendChild(script);
+})();
 
 let currentUser = null;
 
@@ -354,6 +448,7 @@ ticketForm.addEventListener("submit", async (e) => {
   clearPanelMsg(ticketMsg);
 
   const subject = ticketSubjectSelect.value;
+  const subjectLabel = ticketSubjectSelect.options[ticketSubjectSelect.selectedIndex]?.textContent || subject;
   const message = ticketMessageInput.value.trim();
 
   if (!subject) {
@@ -368,28 +463,21 @@ ticketForm.addEventListener("submit", async (e) => {
     showPanelMsg(ticketMsg, "error", "Please wait for your account to finish loading and try again.");
     return;
   }
+  if (!window.emailjs) {
+    showPanelMsg(ticketMsg, "error", "Ticket sending is still loading — please try again in a moment.");
+    return;
+  }
 
   ticketSubmit.classList.add("loading");
   ticketSubmit.disabled = true;
 
   try {
-    const idToken = await currentUser.getIdToken();
-    const res = await fetch(SUBMIT_TICKET_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + idToken
-      },
-      body: JSON.stringify({
-        name: ticketNameInput.value,
-        email: ticketEmailInput.value,
-        subject,
-        message
-      })
-    });
-
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Couldn't send your ticket.");
+    await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SUPPORT_TEMPLATE_ID, {
+      requester_name: ticketNameInput.value,
+      requester_email: ticketEmailInput.value,
+      subject: subjectLabel,
+      message
+    }, { publicKey: EMAILJS_PUBLIC_KEY });
 
     showPanelMsg(ticketMsg, "success", "Ticket sent! We'll reply to " + ticketEmailInput.value + " as soon as possible.");
     ticketSubjectSelect.value = "";
@@ -437,9 +525,16 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
     ticketNameInput.value = fullName;
+
+    if (!tawkSynced) {
+      tawkSynced = true;
+      syncTawkVisitor({ fullName: data.fullName, email: user.email, username: data.username });
+    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -459,32 +554,34 @@ onAuthStateChanged(auth, (user) => {
 });
 
 /* ===========================================================
-   BACKEND NOTE
+   NOTES
    ===========================================================
-   This file never sends email directly — a browser can't do that
-   safely, and the Tawk.to API key must never sit in client code.
-   One Cloud Function needs to exist:
+   - Ticket sending no longer needs a Cloud Function. EmailJS
+     sends straight from the browser with a public key — the old
+     submitSupportTicket function (and its "verify the ID token,
+     hold the Tawk.to API key server-side" design) is gone entirely.
+     The Tawk.to ticket-email address itself
+     (tickets@tasknova-support.p.tawk.email) is assumed to be baked
+     into the EmailJS template's own "To" field, the same way
+     request-task.js's admin-alert template works — sending to that
+     address is what turns the email into a real Tawk.to ticket/
+     conversation, so agents can reply either by email or from the
+     Tawk.to dashboard and it threads as one conversation either way.
 
-   submitSupportTicket({ name, email, subject, message })
-     - Verify the caller's Firebase ID token (from the Authorization header).
-     - Send an email to: tickets@tasknova-support.p.tawk.email
-         From:    TaskNOVA <no-reply@yourdomain.com> (or similar, via
-                  whatever transactional mail service you use —
-                  e.g. Nodemailer + SMTP, SendGrid, Mailgun, etc.)
-         Reply-To: the user's own email, so agents replying from
-                  their inbox reach the user directly.
-         Subject: "[<subject>] " + name
-         Body:    message, plus name/email for reference.
-     - Sending to that address is what turns it into a Tawk.to
-       ticket/conversation — agents can then reply either by email
-       or straight from the Tawk.to dashboard, and it threads as
-       one continuing conversation either way.
-     - Alternatively, if preferred, this same function can call
-       Tawk.to's REST API directly using the API key
-       (0daf0077e92f316573933fa6635c42c977f4b81c) to create the
-       conversation instead of sending an email — either approach
-       lands in the same place. Keep that key as a server-side
-       secret/environment variable, never in this file.
+   - EMAILJS_SUPPORT_TEMPLATE_ID and EMAILJS_PUBLIC_KEY are both
+     still placeholders — nothing will actually send until the real
+     values (a separate template from request-task.js's
+     template_jdbogum, plus the account's public key from EmailJS's
+     dashboard) are filled in above.
 
-   Update SUBMIT_TICKET_ENDPOINT above once this function exists.
+   - Template param names (requester_name, requester_email, subject,
+     message) are this file's own reasonable guess — verify/rename
+     them to match whatever the actual support template expects,
+     same caveat as request-task.js.
+
+   - Tawk.to's own API key (0daf0077e92f316573933fa6635c42c977f4b81c)
+     is never used in this file at all — it's only needed for
+     Tawk.to's own widget script (loaded elsewhere in the page,
+     outside this file's control) and for anything that calls
+     Tawk.to's REST API directly, which nothing here does anymore.
    =========================================================== */
