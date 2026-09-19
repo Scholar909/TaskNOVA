@@ -400,13 +400,20 @@
                 <div class="fee-row total"><span>You'll receive</span><span id="withdrawReceiveValue">₦0.00</span></div>
               </div>
 
-              <div class="w-field">
-                <label for="bankSelect">Bank</label>
-                <select id="bankSelect" name="bankSelect" required>
-                  <option value="" disabled selected>Select your bank</option>
-                </select>
-              </div>
+<div class="w-field">
+  <label for="bankSearch">Search & Select Bank</label>
+  <input 
+    type="text" 
+    id="bankSearch" 
+    placeholder="Type bank name or code to filter..." 
+    style="margin-bottom: 8px;"
+  />
+  <select id="bankSelect" name="bankCode">
+    <option value="" disabled selected>Loading banks…</option>
+  </select>
+</div>
 
+              
               <div class="w-field">
                 <label for="accountNumber">Account number</label>
                 <div class="account-input-wrap">
