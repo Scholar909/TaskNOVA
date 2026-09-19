@@ -598,7 +598,7 @@ function initUtilityWidget() {
     }
   }
 
-  form.addEventListener("submit", async (e) => {
+    form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (payBtn.disabled) return;
 
@@ -607,21 +607,25 @@ function initUtilityWidget() {
     statusMsg.style.display = "none";
 
     try {
-      // UPDATED CODE
-const user = auth.currentUser;
-if (!user) throw new Error("User session expired. Please refresh and log in.");
+      const user = auth.currentUser;
+      if (!user) throw new Error("User session expired. Please refresh and log in.");
 
-const idToken = await user.getIdToken();
+      const idToken = await user.getIdToken();
 
-const payload = {
-  type: state.type,
-  network: state.type === "data" ? state.netId : state.network,
-  phone: state.phone,
-  amount: state.airtimeAmount,
-  plan_id: state.selectedPlan ? state.selectedPlan.id : null
-};
+      // Generate reference with required prefix
+      const refPrefix = state.type === "data" ? "TASKNOVA_ORDER_" : "TASKNOVA_AIR_";
+      const reference = `${refPrefix}${Date.now()}`;
 
-const res = await callEdgeFunction("buy-utility", payload, idToken);
+      const payload = {
+        type: state.type,
+        network: state.type === "data" ? state.netId : state.network,
+        phone: state.phone,
+        amount: state.airtimeAmount,
+        plan_id: state.selectedPlan ? state.selectedPlan.id : null,
+        reference: reference
+      };
+
+      const res = await callEdgeFunction("buy-utility", payload, idToken);
 
       if (res.error) throw new Error(res.error);
 

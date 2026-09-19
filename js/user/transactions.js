@@ -488,6 +488,48 @@ function renderTxItem(tx) {
   const sign = kind === "credit" ? "+" : kind === "pending" ? "" : "−";
   const status = tx.status || (kind === "pending" ? "pending" : "successful");
 
+  let detailsRowsHtml = "";
+
+  if (tx.type === "data") {
+    const phone = tx.phone || "N/A";
+    const network = tx.network ? String(tx.network).toUpperCase() : "N/A";
+    const bundleVal = tx.plan ? `${tx.plan}${tx.validity ? " (" + tx.validity + ")" : ""}` : (tx.description || "N/A");
+
+    detailsRowsHtml = `
+      <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
+      <div class="tx-detail-row"><span>Phone Number</span><span>${phone}</span></div>
+      <div class="tx-detail-row"><span>Network</span><span>${network}</span></div>
+      <div class="tx-detail-row"><span>Bundle &amp; Validity</span><span>${bundleVal}</span></div>
+      <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
+      <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
+      ${tx.reference ? `<div class="tx-detail-row"><span>Reference</span><span>${tx.reference}</span></div>` : ""}
+    `;
+  } else if (tx.type === "airtime") {
+    const phone = tx.phone || "N/A";
+    const network = tx.network ? String(tx.network).toUpperCase() : "N/A";
+    // Deducts 5% extra calculation if raw airtime amount is not explicitly set
+    const rawAirtime = tx.airtimeAmount ? Number(tx.airtimeAmount) : (tx.amount ? Number(tx.amount) / 1.05 : 0);
+
+    detailsRowsHtml = `
+      <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
+      <div class="tx-detail-row"><span>Phone Number</span><span>${phone}</span></div>
+      <div class="tx-detail-row"><span>Network</span><span>${network}</span></div>
+      <div class="tx-detail-row"><span>Airtime Amount</span><span>${formatNaira(rawAirtime)}</span></div>
+      <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
+      <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
+      ${tx.reference ? `<div class="tx-detail-row"><span>Reference</span><span>${tx.reference}</span></div>` : ""}
+    `;
+  } else {
+    detailsRowsHtml = `
+      <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
+      <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
+      <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
+      ${tx.balanceType ? `<div class="tx-detail-row"><span>Balance affected</span><span>${tx.balanceType}</span></div>` : ""}
+      ${tx.description ? `<div class="tx-detail-row"><span>Details</span><span>${tx.description}</span></div>` : ""}
+      ${tx.reference ? `<div class="tx-detail-row"><span>Reference</span><span>${tx.reference}</span></div>` : ""}
+    `;
+  }
+
   return `
     <div class="tx-item ${kind}" data-id="${tx.id}">
       <div class="tx-row">
@@ -502,12 +544,7 @@ function renderTxItem(tx) {
       <div class="tx-detail">
         <div>
           <div class="tx-detail-inner">
-            <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
-            <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
-            <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
-            ${tx.balanceType ? `<div class="tx-detail-row"><span>Balance affected</span><span>${tx.balanceType}</span></div>` : ""}
-            ${tx.description ? `<div class="tx-detail-row"><span>Details</span><span>${tx.description}</span></div>` : ""}
-            ${tx.reference ? `<div class="tx-detail-row"><span>Reference</span><span>${tx.reference}</span></div>` : ""}
+            ${detailsRowsHtml}
           </div>
         </div>
       </div>
@@ -544,6 +581,11 @@ function toTxRow(d) {
     balanceType: data.balanceType || "",
     description: data.description || "",
     reference: data.reference || "",
+    phone: data.phone || data.phoneNumber || "",
+    network: data.network || data.networkName || "",
+    plan: data.plan || data.planName || data.bundle || "",
+    validity: data.validity || "",
+    airtimeAmount: data.airtimeAmount || data.rawAmount || null,
     date: data.createdAt?.toDate ? data.createdAt.toDate() : null
   };
 }
