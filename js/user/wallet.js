@@ -330,7 +330,7 @@ let tawkSynced = false;
 /* ---------------------------------------------------------
    CONFIG — replace these with your real values before launch
    --------------------------------------------------------- */
-const FLUTTERWAVE_PUBLIC_KEY = "FLWPUBK-ef9ca50755f30d40b5d428f8d48d3cde-X";
+const FLUTTERWAVE_PUBLIC_KEY = "FLWPUBK-08a321f68fcf28e8c22d0cfef9050ce6-X";
 
 // Supabase Edge Function names — secret keys (Flutterwave secret key,
 // etc.) live inside these functions' server-side environment only,
