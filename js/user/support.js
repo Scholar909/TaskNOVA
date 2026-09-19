@@ -428,9 +428,9 @@ ensureSubjectOption("other", "Other");
 const EMAILJS_SERVICE_ID = "service_9rc53vl";
 // TODO: fill in manually — this page's own template id (kept
 // separate from request-task.js's template_jdbogum).
-const EMAILJS_SUPPORT_TEMPLATE_ID = "YOUR_SUPPORT_TEMPLATE_ID";
+const EMAILJS_SUPPORT_TEMPLATE_ID = "template_jdbogum";
 // TODO: fill in manually — EmailJS dashboard -> Account -> API Keys.
-const EMAILJS_PUBLIC_KEY = "YOUR_EMAILJS_PUBLIC_KEY";
+const EMAILJS_PUBLIC_KEY = "U1tt86J8H_-S_0QfH";
 
 (function loadEmailJs() {
   if (window.emailjs || document.querySelector("script[data-emailjs]")) return;
