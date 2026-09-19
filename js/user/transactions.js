@@ -536,6 +536,9 @@ function renderTxItem(tx) {
   } else {
     detailsRowsHtml = `
       <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
+      ${tx.bankName ? `<div class="tx-detail-row"><span>Bank Name</span><span>${tx.bankName}</span></div>` : ""}
+      ${tx.accountNumber ? `<div class="tx-detail-row"><span>Account Number</span><span>${tx.accountNumber}</span></div>` : ""}
+      ${tx.accountName ? `<div class="tx-detail-row"><span>Account Name</span><span>${tx.accountName}</span></div>` : ""}
       <div class="tx-detail-row"><span>Status</span><span><span class="tx-status-badge ${status}">${status}</span></span></div>
       <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
       ${tx.balanceType ? `<div class="tx-detail-row"><span>Balance affected</span><span>${tx.balanceType}</span></div>` : ""}
@@ -564,7 +567,6 @@ function renderTxItem(tx) {
       </div>
     </div>`;
 }
-
 
 function updateSummary() {
   let totalIn = 0;
@@ -601,7 +603,11 @@ function toTxRow(d) {
     plan: data.plan || data.planName || data.bundle || "",
     validity: data.validity || "",
     airtimeAmount: data.airtimeAmount || data.rawAmount || null,
-    date: data.createdAt?.toDate ? data.createdAt.toDate() : null
+    date: data.createdAt?.toDate ? data.createdAt.toDate() : null,
+    // Add bank and account details mapping
+    bankName: data.bankName || "",
+    accountNumber: data.accountNumber || "",
+    accountName: data.accountName || ""
   };
 }
 
