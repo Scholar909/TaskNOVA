@@ -164,16 +164,53 @@ img { display: block; max-width: 100%; }
 .mc-field-label:first-child { margin-top: 0; }
 .mc-field-label span { font-weight: 400; text-transform: none; }
 
+/* Explicit Placeholder Rules (Light & Dark Theme) */
+::placeholder,
+::-webkit-input-placeholder {
+  color: var(--text-soft) !important;
+  opacity: 0.65 !important;
+  font-family: inherit !important;
+  font-size: .82rem !important;
+}
+
 .settings-form select, .settings-form input[type="text"],
 #lockMessageInput, #forceLogoutConfirmInput,
 .modal-body input, .modal-body select, .modal-body textarea {
-  width: 100%; min-height: 44px; padding: 0 12px;
+  width: 100%; min-height: 40px; padding: 0 12px;
   border: 1px solid var(--line); border-radius: 12px;
-  background: var(--surface-2); color: var(--text); font: inherit; font-size: .86rem; outline: none;
+  background: var(--surface-2); color: var(--text); font: inherit; font-size: .84rem; outline: none;
+  transition: border-color .2s ease, box-shadow .2s ease;
 }
-#lockMessageInput { min-height: 76px; padding: 10px 12px; resize: vertical; font-family: inherit; }
+#lockMessageInput {
+  min-height: 72px; padding: 10px 12px; resize: vertical; font-family: inherit;
+  line-height: 1.5; border-radius: 12px; background: var(--surface-2); color: var(--text);
+}
 .settings-form select:focus, .settings-form input:focus, #lockMessageInput:focus, #forceLogoutConfirmInput:focus,
-.modal-body input:focus, .modal-body select:focus { border-color: rgba(22,128,255,.45); }
+.modal-body input:focus, .modal-body select:focus {
+  border-color: rgba(22,128,255,.55);
+  box-shadow: 0 0 0 3px rgba(22,128,255,.12);
+}
+
+/* Custom Searchable Bank Dropdown */
+.bank-select-wrapper { position: relative; width: 100%; }
+.bank-select-btn {
+  width: 100%; min-height: 40px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); color: var(--text);
+  font-size: .84rem; cursor: pointer; text-align: left; transition: border-color .2s ease;
+}
+.bank-select-btn:focus, .bank-select-btn.active { border-color: rgba(22,128,255,.55); }
+.bank-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 100;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface-solid);
+  box-shadow: var(--shadow); overflow: hidden; padding: 8px; max-height: 240px; display: flex; flex-direction: column;
+}
+.bank-search-wrap { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); margin-bottom: 6px; }
+.bank-search-wrap i { color: var(--text-soft); font-size: 1rem; }
+.bank-search-wrap input { border: none !important; background: transparent !important; padding: 0 !important; min-height: 28px !important; font-size: .82rem !important; outline: none !important; box-shadow: none !important; }
+.bank-options-list { overflow-y: auto; max-height: 180px; display: flex; flex-direction: column; gap: 2px; }
+.bank-option { padding: 8px 10px; border-radius: 8px; font-size: .82rem; color: var(--text); cursor: pointer; transition: background .15s ease; }
+.bank-option:hover { background: var(--surface-2); color: var(--primary); }
+.bank-option.selected { background: color-mix(in srgb, var(--primary) 12%, transparent); color: var(--primary); font-weight: 600; }
 
 .verify-row { display: flex; gap: 8px; }
 .verify-row input { flex: 1; }
@@ -283,14 +320,14 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
 .bac-info span { display: block; font-size: .72rem; color: var(--text-soft); margin-top: 1px; }
 
 /* ---------- ROLE RADIO ---------- */
-.role-radio-row { display: flex; gap: 10px; margin-top: 6px; }
+.role-radio-row { display: flex; gap: 8px; margin-top: 6px; }
 .role-radio {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2);
-  font-size: .82rem; font-weight: 600; cursor: pointer; transition: border-color .2s ease, color .2s ease;
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2);
+  font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .2s ease;
 }
-.role-radio input { accent-color: var(--primary); }
-.role-radio:has(input:checked) { border-color: rgba(22,128,255,.5); color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.role-radio input { accent-color: var(--primary); cursor: pointer; width: 14px; height: 14px; }
+.role-radio:has(input:checked) { border-color: rgba(22,128,255,.6); color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, transparent); }
 
 /* ---------- MY DETAILS (support read-only view) ---------- */
 .my-details-grid { display: grid; gap: 10px; }
@@ -433,13 +470,15 @@ body.dark .theme-switch .ts-knob { transform: translateX(20px); }
 .menu-divider { height: 1px; background: var(--line); margin: 10px 0; }
 .menu-theme-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 10px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 12px; font-size: .85rem; font-weight: 500; }
 .menu-spacer { flex: 1; }
+
 .logout-btn {
-  display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px;
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); border-radius: 13px;
-  background: color-mix(in srgb, var(--danger) 8%, transparent); color: var(--danger);
-  font-size: .87rem; font-weight: 600; cursor: pointer; margin-top: 8px;
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 6%, transparent); color: var(--danger);
+  font-size: .84rem; font-weight: 600; cursor: pointer; margin-top: 10px; transition: all .2s ease;
 }
-.logout-btn:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.logout-btn:hover { background: color-mix(in srgb, var(--danger) 16%, transparent); border-color: var(--danger); transform: translateY(-1px); }
+.logout-btn:active { transform: scale(.98); }
 
 /* ---------- REVEAL ---------- */
 .reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
