@@ -413,7 +413,7 @@
     <div class="auth-card reveal">
       <div class="auth-icon"><i class="bx bxs-shield-alt-2"></i></div>
       <h1>Admin Login</h1>
-      <p class="sub">Sign in with your TaskNOVA admin account.</p>
+      <p class="sub">Sign in to the TaskNOVA admin platform.</p>
 
       <form id="adminLoginForm" novalidate>
         <div class="panel-msg" id="loginMsg"></div>
@@ -554,15 +554,22 @@
     }
 
     /* ---------------------------------------------------------
-       ADMIN CHECK — the same users/{uid} doc everyone has, just
-       with an extra `isAdmin: true` field set manually in the
-       Firebase console for whichever accounts should have access.
+       STAFF CHECK — replaces the old single `isAdmin: true` flag
+       on users/{uid}. Admin and support accounts are no longer
+       part of the regular users collection at all: an admin
+       creates them from Settings (Team Members), which writes a
+       doc at staffAccounts/{uid} with a role of "admin" or
+       "support". Anyone signing in here needs a matching doc to
+       get past this check, regardless of role — role only decides
+       what they see once they're in (dashboard.html and every
+       other admin page reads staffAccounts/{uid} for that, same
+       pattern as this check).
        --------------------------------------------------------- */
-    async function verifyAdminAndRedirect(user) {
-      const snap = await getDoc(doc(db, "users", user.uid));
-      const isAdmin = snap.exists() && snap.data().isAdmin === true;
+    async function verifyStaffAndRedirect(user) {
+      const snap = await getDoc(doc(db, "staffAccounts", user.uid));
+      const isStaff = snap.exists() && (snap.data().role === "admin" || snap.data().role === "support");
 
-      if (!isAdmin) {
+      if (!isStaff) {
         await signOut(auth);
         showMsg("error", "This account does not have admin access.");
         setLoading(false);
@@ -572,12 +579,12 @@
       window.location.href = "dashboard.html";
     }
 
-    // If already signed in as an admin, skip straight to the dashboard.
+    // If already signed in as staff, skip straight to the dashboard.
     let hasAutoChecked = false;
     onAuthStateChanged(auth, (user) => {
       if (hasAutoChecked) return;
       hasAutoChecked = true;
-      if (user) verifyAdminAndRedirect(user);
+      if (user) verifyStaffAndRedirect(user);
     });
 
     /* ---------------------------------------------------------
@@ -599,7 +606,7 @@
 
       try {
         const cred = await signInWithEmailAndPassword(auth, email, password);
-        await verifyAdminAndRedirect(cred.user);
+        await verifyStaffAndRedirect(cred.user);
       } catch (err) {
         showMsg("error", friendlyError(err));
         setLoading(false);

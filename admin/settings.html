@@ -196,92 +196,227 @@
       <!-- Page heading -->
       <div class="greeting reveal">
         <h1>Settings</h1>
-        <p>Platform-wide configuration for TaskNOVA.</p>
+        <p id="pageSubtitle">Platform-wide configuration for TaskNOVA.</p>
       </div>
 
-      <!-- ================= MANUAL TRANSFER BANK DETAILS ================= -->
-      <section class="settings-card reveal delay-1">
+      <!-- =========================================================
+           SUPPORT VIEW — own read-only details only
+           ========================================================= -->
+      <section class="settings-card reveal delay-1" id="supportOnlySection" style="display:none;">
         <div class="sc-head">
-          <div class="sc-icon"><i class="bx bx-bank"></i></div>
+          <div class="sc-icon"><i class="bx bx-id-card"></i></div>
           <div>
-            <h2>Manual Transfer Bank Account</h2>
-            <p>Where users send money for the manual bank-transfer deposit method. Live everywhere instantly once saved.</p>
+            <h2>My Details</h2>
+            <p>Read-only. If anything here needs to change, ask an admin.</p>
           </div>
         </div>
 
-        <div class="current-bank-box" id="currentBankBox">
-          <div class="cbb-label">Currently live</div>
-          <div class="cbb-value" id="currentBankValue">Loading…</div>
-        </div>
-
-        <div class="settings-form">
-          <label class="mc-field-label">Bank</label>
-          <select id="bankSelect">
-            <option value="">Select a bank…</option>
-          </select>
-
-          <label class="mc-field-label">Account Number</label>
-          <div class="verify-row">
-            <input type="text" id="accountNumberInput" inputmode="numeric" maxlength="10" placeholder="10-digit account number">
-            <button type="button" class="btn btn-ghost" id="verifyAccountBtn"><span class="btn-spinner"></span><i class="bx bx-check-shield"></i><span class="btn-label">Verify</span></button>
-          </div>
-          <div class="resolved-name-box" id="resolvedNameBox" style="display:none;">
-            <i class="bx bx-user-check"></i><span id="resolvedNameValue"></span>
-          </div>
-          <div class="mc-msg" id="bankMsg" style="display:none;"></div>
-
-          <button type="button" class="btn btn-primary" id="saveBankBtn" disabled style="margin-top:10px;">
-            <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save Bank Details</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- ================= MAINTENANCE & SECURITY ================= -->
-      <section class="settings-card reveal delay-2">
-        <div class="sc-head">
-          <div class="sc-icon danger"><i class="bx bx-shield-quarter"></i></div>
-          <div>
-            <h2>Maintenance &amp; Security</h2>
-            <p>Lock new sign-ins platform-wide, or force every signed-in user to log back in — for rollouts or incident response.</p>
-          </div>
-        </div>
-
-        <div class="lock-toggle-row">
-          <div class="ltr-info">
-            <strong>Lock Logins</strong>
-            <span>Blocks new sign-ins across TaskNOVA until turned off.</span>
-          </div>
-          <button type="button" class="theme-switch" id="lockToggle" aria-label="Toggle login lock">
-            <span class="ts-knob"><i class="bx bx-lock-alt" id="lockToggleIcon"></i></span>
-          </button>
-        </div>
-
-        <label class="mc-field-label">Message shown to users while locked <span>(optional)</span></label>
-        <textarea id="lockMessageInput" placeholder="e.g. TaskNOVA is undergoing scheduled maintenance — please check back shortly."></textarea>
-        <button type="button" class="btn btn-primary" id="saveLockBtn" style="margin-top:8px;">
-          <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save Lock Settings</span>
-        </button>
-
-        <div class="settings-divider"></div>
-
-        <div class="danger-zone">
-          <strong><i class="bx bx-error"></i> Force Logout Everyone</strong>
-          <p>Immediately signs every user — workers, employers, advertisers, and other admins — out of every device. They'll need to log back in.</p>
-          <button type="button" class="btn btn-danger" id="forceLogoutToggleBtn"><i class="bx bx-log-out"></i><span class="btn-label">Force Logout Everyone</span></button>
-
-          <div class="tc-decline-panel" id="forceLogoutPanel"><div><div class="tc-decline-inner">
-            <p class="mc-hint">This can't be undone. Type <strong>LOGOUT ALL</strong> below to confirm.</p>
-            <input type="text" id="forceLogoutConfirmInput" placeholder="Type LOGOUT ALL to confirm" autocomplete="off">
-            <div class="tc-actions">
-              <button type="button" class="btn btn-ghost" data-act="force-logout-cancel">Cancel</button>
-              <button type="button" class="btn btn-danger" id="forceLogoutConfirmBtn" disabled><span class="btn-spinner"></span><i class="bx bx-log-out"></i><span class="btn-label">Confirm — Log Everyone Out</span></button>
+        <div class="my-details-grid">
+          <div class="mdg-row"><span>Full name</span><strong id="myFullName">—</strong></div>
+          <div class="mdg-row"><span>Username</span><strong id="myUsername">—</strong></div>
+          <div class="mdg-row"><span>Email</span><strong id="myEmail">—</strong></div>
+          <div class="mdg-row">
+            <span>Password</span>
+            <div class="mdg-password">
+              <strong id="myPassword">••••••••</strong>
+              <button type="button" class="pw-reveal-btn" id="myPasswordToggle" aria-label="Show password">
+                <i class="bx bx-hide"></i>
+              </button>
             </div>
-          </div></div></div>
+          </div>
         </div>
       </section>
+
+      <!-- =========================================================
+           ADMIN VIEW
+           ========================================================= -->
+      <div id="adminOnlySection" style="display:none;">
+
+        <!-- ================= TEAM MEMBERS ================= -->
+        <section class="settings-card reveal delay-1">
+          <div class="sc-head">
+            <div class="sc-icon"><i class="bx bx-group"></i></div>
+            <div>
+              <h2>Team Members</h2>
+              <p>Everyone with access to the admin platform — admins and support.</p>
+            </div>
+            <button type="button" class="btn btn-primary sc-head-btn" id="addTeamMemberBtn">
+              <i class="bx bx-user-plus"></i> Add
+            </button>
+          </div>
+
+          <div class="team-list" id="teamList">
+            <div class="tc-skeleton"></div>
+            <div class="tc-skeleton"></div>
+          </div>
+          <div class="panel-empty" id="teamEmpty" style="display:none;">
+            <i class="bx bx-group"></i><span>No team members yet.</span>
+          </div>
+        </section>
+
+        <!-- ================= MANUAL TRANSFER BANK ACCOUNTS ================= -->
+        <section class="settings-card reveal delay-2">
+          <div class="sc-head">
+            <div class="sc-icon"><i class="bx bx-bank"></i></div>
+            <div>
+              <h2>Manual Transfer Bank Accounts</h2>
+              <p>Up to 5 accounts users can send money to for the manual bank-transfer deposit method. Live everywhere instantly once saved.</p>
+            </div>
+          </div>
+
+          <div class="bank-account-list" id="bankAccountList">
+            <div class="tc-skeleton"></div>
+          </div>
+          <div class="panel-empty" id="bankAccountEmpty" style="display:none;">
+            <i class="bx bx-bank"></i><span>No manual transfer accounts set up yet.</span>
+          </div>
+
+          <button type="button" class="btn btn-ghost" id="addBankAccountBtn" style="width:100%;margin-top:10px;">
+            <i class="bx bx-plus"></i> Add Bank Account
+          </button>
+
+          <div class="settings-form" id="addBankForm" style="display:none;margin-top:12px;">
+            <label class="mc-field-label">Bank</label>
+            <select id="bankSelect">
+              <option value="">Select a bank…</option>
+            </select>
+
+            <label class="mc-field-label">Account Number</label>
+            <div class="verify-row">
+              <input type="text" id="accountNumberInput" inputmode="numeric" maxlength="10" placeholder="10-digit account number">
+              <button type="button" class="btn btn-ghost" id="verifyAccountBtn"><span class="btn-spinner"></span><i class="bx bx-check-shield"></i><span class="btn-label">Verify</span></button>
+            </div>
+            <div class="resolved-name-box" id="resolvedNameBox" style="display:none;">
+              <i class="bx bx-user-check"></i><span id="resolvedNameValue"></span>
+            </div>
+            <div class="mc-msg" id="bankMsg" style="display:none;"></div>
+
+            <div class="tc-actions" style="margin-top:10px;">
+              <button type="button" class="btn btn-ghost" id="cancelBankBtn">Cancel</button>
+              <button type="button" class="btn btn-primary" id="saveBankBtn" disabled>
+                <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save Account</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= MAINTENANCE & SECURITY ================= -->
+        <section class="settings-card reveal delay-3">
+          <div class="sc-head">
+            <div class="sc-icon danger"><i class="bx bx-shield-quarter"></i></div>
+            <div>
+              <h2>Maintenance &amp; Security</h2>
+              <p>Lock new sign-ins platform-wide, or force every signed-in user to log back in — for rollouts or incident response.</p>
+            </div>
+          </div>
+
+          <div class="lock-toggle-row">
+            <div class="ltr-info">
+              <strong>Lock Logins</strong>
+              <span>Blocks new sign-ins across TaskNOVA until turned off.</span>
+            </div>
+            <button type="button" class="theme-switch" id="lockToggle" aria-label="Toggle login lock">
+              <span class="ts-knob"><i class="bx bx-lock-alt" id="lockToggleIcon"></i></span>
+            </button>
+          </div>
+
+          <label class="mc-field-label">Message shown to users while locked <span>(optional)</span></label>
+          <textarea id="lockMessageInput" placeholder="e.g. TaskNOVA is undergoing scheduled maintenance — please check back shortly."></textarea>
+          <button type="button" class="btn btn-primary" id="saveLockBtn" style="margin-top:8px;">
+            <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save Lock Settings</span>
+          </button>
+
+          <div class="settings-divider"></div>
+
+          <div class="danger-zone">
+            <strong><i class="bx bx-error"></i> Force Logout Everyone</strong>
+            <p>Immediately signs every user — workers, employers, advertisers, and other admins — out of every device. They'll need to log back in.</p>
+            <button type="button" class="btn btn-danger" id="forceLogoutToggleBtn"><i class="bx bx-log-out"></i><span class="btn-label">Force Logout Everyone</span></button>
+
+            <div class="tc-decline-panel" id="forceLogoutPanel"><div><div class="tc-decline-inner">
+              <p class="mc-hint">This can't be undone. Type <strong>LOGOUT ALL</strong> below to confirm.</p>
+              <input type="text" id="forceLogoutConfirmInput" placeholder="Type LOGOUT ALL to confirm" autocomplete="off">
+              <div class="tc-actions">
+                <button type="button" class="btn btn-ghost" data-act="force-logout-cancel">Cancel</button>
+                <button type="button" class="btn btn-danger" id="forceLogoutConfirmBtn" disabled><span class="btn-spinner"></span><i class="bx bx-log-out"></i><span class="btn-label">Confirm — Log Everyone Out</span></button>
+              </div>
+            </div></div></div>
+          </div>
+        </section>
+
+      </div>
 
     </div>
   </main>
+
+  <!-- =========================================================
+       ADD / EDIT TEAM MEMBER MODAL
+       ========================================================= -->
+  <div class="modal-overlay" id="teamModal" aria-hidden="true">
+    <div class="modal-backdrop" id="teamModalBackdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <strong id="teamModalTitle">Add Team Member</strong>
+        <button type="button" class="menu-close" id="teamModalClose" aria-label="Close"><i class="bx bx-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <label class="mc-field-label">Full Name</label>
+        <input type="text" id="teamFullName" placeholder="e.g. Ada Obi">
+
+        <label class="mc-field-label">Username</label>
+        <input type="text" id="teamUsername" placeholder="e.g. ada_obi" autocomplete="off">
+
+        <label class="mc-field-label">Email</label>
+        <input type="email" id="teamEmail" placeholder="e.g. ada@tasknova.ng" autocomplete="off">
+
+        <label class="mc-field-label">Password <span id="teamPasswordHint">(they'll use this to log in)</span></label>
+        <div class="field-input-wrap has-toggle">
+          <input type="password" id="teamPassword" placeholder="Min. 6 characters" autocomplete="new-password">
+          <button type="button" class="field-toggle" id="teamPasswordToggle" aria-label="Show password"><i class="bx bx-hide"></i></button>
+        </div>
+
+        <label class="mc-field-label">Role</label>
+        <div class="role-radio-row">
+          <label class="role-radio"><input type="radio" name="teamRole" value="support" checked> <span>Support</span></label>
+          <label class="role-radio"><input type="radio" name="teamRole" value="admin"> <span>Admin</span></label>
+        </div>
+
+        <div class="mc-msg" id="teamModalMsg" style="display:none;"></div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="teamModalCancel">Cancel</button>
+          <button type="button" class="btn btn-primary" id="teamModalSave">
+            <span class="btn-spinner"></span><span class="btn-label">Save</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       DELETE TEAM MEMBER CONFIRMATION MODAL
+       ========================================================= -->
+  <div class="modal-overlay" id="deleteTeamModal" aria-hidden="true">
+    <div class="modal-backdrop" id="deleteTeamModalBackdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <strong>Remove Team Member</strong>
+        <button type="button" class="menu-close" id="deleteTeamModalClose" aria-label="Close"><i class="bx bx-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-warning">
+          <i class="bx bx-error-circle"></i>
+          <span id="deleteTeamModalText">This removes their admin platform access entirely.</span>
+        </p>
+        <div class="modal-actions">
+          <button type="button" class="btn-ghost" id="deleteTeamModalCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="deleteTeamModalConfirm">
+            <span class="btn-spinner"></span><span class="btn-label"><i class="bx bx-trash"></i> Remove</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- =========================================================
        TOAST
