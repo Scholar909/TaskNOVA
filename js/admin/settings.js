@@ -1,40 +1,15 @@
 /* =========================================================
    TASKNOVA ADMIN — SETTINGS PAGE LOGIC
    Firebase v12.17.1 modular SDK
-
-   Full rewrite this pass — see chat for context. Key changes:
-   1. Admin identity now reads staffAccounts/{uid}, not
-      users/{uid} — admins and support are no longer part of the
-      regular platform-user collection at all. This resolves the
-      "flagged assumption" every other admin page has carried
-      since the start of this build; those pages still need the
-      same swap applied whenever they're next touched.
-   2. NEW: Team Members section (admin-only) — add/edit/delete
-      admin and support accounts, each with their own individual
-      email/password login (no more shared admin credentials).
-      Creating/editing/deleting another Auth account needs
-      Firebase Admin SDK privileges, so these three actions go
-      through Supabase Edge Functions (none deployed yet — full
-      spec in the NOTES at the end), not direct client SDK calls.
-   3. NEW: support-role view — a single read-only "My Details"
-      card (name/username/email/password) instead of any of the
-      admin sections. See the NOTES for the real security
-      trade-off in storing a readable password at all.
-   4. Manual Transfer Bank Accounts is now a LIST of up to 5
-      accounts (was a single account) — settings/manualTransferBanks
-      { accounts: [...] }, not settings/manualTransferBank.
-      wallet.js reads the OLD single-doc path and needs updating
-      to read this new array whenever it's next touched.
-   5. resolveAccount and forceLogoutAll switched from the old
-      Cloud Function pattern to Supabase Edge Functions, matching
-      the rest of this rework.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {
   getAuth,
   onAuthStateChanged,
-  signOut
+  signOut,
+  createUserWithEmailAndPassword,
+  sendEmailVerification
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 import {
   getFirestore,
@@ -44,6 +19,9 @@ import {
   deleteDoc,
   onSnapshot,
   collection,
+  query,
+  where,
+  getDocs,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { callEdgeFunction } from "../supabase.js";
@@ -71,57 +49,30 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Secondary app instance to create new Auth users without logging out current Admin
+const secondaryApp = initializeApp(firebaseConfig, "SecondaryAuthApp");
+const secondaryAuth = getAuth(secondaryApp);
+
 let currentAdmin = null;
 let currentStaffDoc = null; // { role, fullName, username, email, password }
 
-/* ---------------------------------------------------------
-   NIGERIAN BANKS — same static list wallet.js/other admin
-   pages already use.
-   --------------------------------------------------------- */
-const NIGERIAN_BANKS = [
-  { name: "Access Bank", code: "044" },
-  { name: "Citibank Nigeria", code: "023" },
-  { name: "Ecobank Nigeria", code: "050" },
-  { name: "Fidelity Bank", code: "070" },
-  { name: "First Bank of Nigeria", code: "011" },
-  { name: "First City Monument Bank (FCMB)", code: "214" },
-  { name: "Globus Bank", code: "00103" },
-  { name: "Guaranty Trust Bank (GTBank)", code: "058" },
-  { name: "Heritage Bank", code: "030" },
-  { name: "Jaiz Bank", code: "301" },
-  { name: "Keystone Bank", code: "082" },
-  { name: "Kuda Microfinance Bank", code: "50211" },
-  { name: "Moniepoint MFB", code: "50515" },
-  { name: "Opay (Paycom)", code: "999992" },
-  { name: "Palmpay", code: "999991" },
-  { name: "Parallex Bank", code: "104" },
-  { name: "Polaris Bank", code: "076" },
-  { name: "Premium Trust Bank", code: "105" },
-  { name: "Providus Bank", code: "101" },
-  { name: "Stanbic IBTC Bank", code: "221" },
-  { name: "Standard Chartered Bank", code: "068" },
-  { name: "Sterling Bank", code: "232" },
-  { name: "SunTrust Bank", code: "100" },
-  { name: "Titan Trust Bank", code: "102" },
-  { name: "Union Bank of Nigeria", code: "032" },
-  { name: "United Bank for Africa (UBA)", code: "033" },
-  { name: "Unity Bank", code: "215" },
-  { name: "Wema Bank / ALAT", code: "035" },
-  { name: "Zenith Bank", code: "057" }
-];
+let allBanks = [];
 
-/* Searchable Bank Dropdown Logic */
-const bankSelectBtn = document.getElementById("bankSelectBtn");
-const selectedBankText = document.getElementById("selectedBankText");
-const bankDropdown = document.getElementById("bankDropdown");
-const bankSearchInput = document.getElementById("bankSearchInput");
-const bankOptionsList = document.getElementById("bankOptionsList");
-const bankCodeHidden = document.getElementById("bankCodeHidden");
+// Fetch live Flutterwave bank codes on page load (same as wallet.js)
+async function loadAdminBanks() {
+  try {
+    const idToken = await currentAdmin.getIdToken();
+    allBanks = await callEdgeFunction("list-banks", {}, idToken);
+    populateBankOptions();
+  } catch (err) {
+    console.error("Failed to load Flutterwave banks:", err);
+  }
+}
 
 function populateBankOptions(filter = "") {
   bankOptionsList.innerHTML = "";
-  const query = filter.toLowerCase().trim();
-  const filtered = NIGERIAN_BANKS.filter(b => b.name.toLowerCase().includes(query));
+  const queryStr = filter.toLowerCase().trim();
+  const filtered = allBanks.filter(b => b.name.toLowerCase().includes(queryStr));
 
   if (filtered.length === 0) {
     bankOptionsList.innerHTML = `<div class="bank-option" style="color:var(--text-soft);pointer-events:none;">No bank found</div>`;
@@ -141,6 +92,7 @@ function populateBankOptions(filter = "") {
     bankOptionsList.appendChild(item);
   });
 }
+
 
 populateBankOptions();
 
@@ -163,9 +115,8 @@ document.addEventListener("click", (e) => {
   }
 });
 
-
 /* ---------------------------------------------------------
-   THEME (persists site-wide — same key used on every page)
+   THEME
    --------------------------------------------------------- */
 const body = document.body;
 const themeSwitch = document.getElementById("themeSwitch");
@@ -265,7 +216,7 @@ document.getElementById("logoutBtn")?.addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------
-   TOAST
+   TOAST & HELPERS
    --------------------------------------------------------- */
 const toastEl = document.getElementById("toast");
 const toastMsgEl = document.getElementById("toastMsg");
@@ -284,17 +235,60 @@ function escapeHtml(str) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
 }
-function formatDate(ts) {
-  if (!ts) return "—";
-  const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
+
+/* ---------------------------------------------------------
+   DUPLICATE EMAIL & USERNAME CHECK HELPERS
+   --------------------------------------------------------- */
+async function isEmailTaken(email, excludeUid = null) {
+  const emailLower = email.toLowerCase().trim();
+
+  // Check staffAccounts collection
+  const staffSnap = await getDocs(collection(db, "staffAccounts"));
+  for (const docSnap of staffSnap.docs) {
+    if (docSnap.id === excludeUid) continue;
+    const data = docSnap.data();
+    if (data.email && data.email.toLowerCase().trim() === emailLower) {
+      return true;
+    }
+  }
+
+  // Check users collection
+  const usersQ = query(collection(db, "users"), where("email", "==", email.trim()));
+  const usersSnap = await getDocs(usersQ);
+  for (const docSnap of usersSnap.docs) {
+    if (docSnap.id === excludeUid) continue;
+    return true;
+  }
+
+  return false;
+}
+
+async function isUsernameTaken(username, excludeUid = null) {
+  const unLower = username.toLowerCase().trim();
+
+  // Check staffAccounts collection
+  const staffSnap = await getDocs(collection(db, "staffAccounts"));
+  for (const docSnap of staffSnap.docs) {
+    if (docSnap.id === excludeUid) continue;
+    const data = docSnap.data();
+    if (data.username && data.username.toLowerCase().trim() === unLower) {
+      return true;
+    }
+  }
+
+  // Check users collection
+  const usersQ = query(collection(db, "users"), where("usernameLower", "==", unLower));
+  const usersSnap = await getDocs(usersQ);
+  for (const docSnap of usersSnap.docs) {
+    if (docSnap.id === excludeUid) continue;
+    return true;
+  }
+
+  return false;
 }
 
 /* ===========================================================
    TEAM MEMBERS (admin-only)
-   Reads the staffAccounts collection live — small collection
-   (a handful of staff), so one unfiltered onSnapshot is the
-   simplest correct approach, no pagination needed.
    =========================================================== */
 const teamList = document.getElementById("teamList");
 const teamEmpty = document.getElementById("teamEmpty");
@@ -330,7 +324,7 @@ function renderTeamCard(uid, data) {
       <span class="role-badge ${data.role === "admin" ? "admin" : "support"}">${data.role === "admin" ? "Admin" : "Support"}</span>
       <div class="team-actions">
         <button type="button" class="team-icon-btn" data-act="edit-team" aria-label="Edit"><i class="bx bx-edit-alt"></i></button>
-        <button type="button" class="team-icon-btn danger" data-act="delete-team" ${isSelf ? "disabled" : ""} aria-label="Remove" title="${isSelf ? "You can't remove your own account — ask another admin to do it" : "Remove"}"><i class="bx bx-trash"></i></button>
+        <button type="button" class="team-icon-btn danger" data-act="delete-team" ${isSelf ? "disabled" : ""} aria-label="Remove" title="${isSelf ? "You can't remove your own account" : "Remove"}"><i class="bx bx-trash"></i></button>
       </div>
     </div>`;
 }
@@ -376,13 +370,10 @@ function openTeamModal(uid) {
   teamPasswordToggle.innerHTML = '<i class="bx bx-hide"></i>';
 
   if (editingUid) {
-    const card = teamList.querySelector(`.team-card[data-uid="${editingUid}"]`);
     teamModalTitle.textContent = "Edit Team Member";
-    teamPasswordHint.textContent = "(leave blank to keep their current password)";
+    teamPasswordHint.textContent = "(leave blank to keep current password)";
     teamPassword.placeholder = "Leave blank to keep unchanged";
     teamPassword.value = "";
-    // Pull current values straight from Firestore rather than the
-    // rendered card, so nothing's lost to text truncation in the DOM.
     getDoc(doc(db, "staffAccounts", editingUid)).then((snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
@@ -451,28 +442,101 @@ teamModalSave.addEventListener("click", async () => {
 
   teamModalSave.classList.add("loading");
   teamModalSave.disabled = true;
+
   try {
-    const payload = {
-      fullName,
-      username,
-      email,
-      role,
-      updatedAt: serverTimestamp()
-    };
-    if (password) payload.password = password;
+    // 1. Check if email is already in use
+    const emailInUse = await isEmailTaken(email, editingUid);
+    if (emailInUse) {
+      showTeamModalMsg("This email address is already in use by another account.");
+      teamModalSave.classList.remove("loading");
+      teamModalSave.disabled = false;
+      return;
+    }
+
+    // 2. Check if username is already taken
+    const usernameInUse = await isUsernameTaken(username, editingUid);
+    if (usernameInUse) {
+      showTeamModalMsg("This username is already taken. Please choose another.");
+      teamModalSave.classList.remove("loading");
+      teamModalSave.disabled = false;
+      return;
+    }
 
     if (editingUid) {
+      // Edit existing staff account
+      const payload = {
+        fullName,
+        username,
+        email,
+        role,
+        updatedAt: serverTimestamp()
+      };
+      if (password) payload.password = password;
+
       await setDoc(doc(db, "staffAccounts", editingUid), payload, { merge: true });
+
+      // Trigger Edge Function sync if available
+      try {
+        const idToken = await currentAdmin.getIdToken();
+        await callEdgeFunction(EDGE_FN.updateStaffAccount, { uid: editingUid, fullName, username, email, password, role }, idToken);
+      } catch (e) {
+        console.warn("Edge function updateStaffAccount warning:", e);
+      }
+
       showToast("Team member updated.");
     } else {
-      const newStaffRef = doc(collection(db, "staffAccounts"));
-      await setDoc(newStaffRef, {
-        ...payload,
+      // Create NEW Firebase Auth user via secondaryAuth
+      let newUid = null;
+      try {
+        const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+        const newAuthUser = cred.user;
+        newUid = newAuthUser.uid;
+
+        // Send verification confirmation link to their email
+        await sendEmailVerification(newAuthUser);
+
+        // Sign out secondary session immediately
+        await signOut(secondaryAuth);
+      } catch (authErr) {
+        if (authErr.code === "auth/email-already-in-use") {
+          showTeamModalMsg("This email address is already registered in Firebase Authentication.");
+        } else if (authErr.code === "auth/invalid-email") {
+          showTeamModalMsg("Invalid email format.");
+        } else if (authErr.code === "auth/weak-password") {
+          showTeamModalMsg("Password must be at least 6 characters.");
+        } else {
+          showTeamModalMsg(authErr.message || "Failed to create authentication account.");
+        }
+        teamModalSave.classList.remove("loading");
+        teamModalSave.disabled = false;
+        return;
+      }
+
+      // Save document in Firestore under staffAccounts/{newUid}
+      const payload = {
+        uid: newUid,
+        fullName,
+        username,
+        email,
+        password,
+        role,
         createdAt: serverTimestamp(),
         createdBy: currentAdmin.uid
-      });
-      showToast("Team member added successfully.");
+      };
+
+      await setDoc(doc(db, "staffAccounts", newUid), payload);
+
+      // Trigger Edge Function sync if available
+      try {
+        const idToken = await currentAdmin.getIdToken();
+        await callEdgeFunction(EDGE_FN.createStaffAccount, payload, idToken);
+      } catch (e) {
+        console.warn("Edge function createStaffAccount warning:", e);
+      }
+
+      showToast("Team member added! Verification email link sent.");
     }
+
     closeTeamModal();
   } catch (err) {
     console.error("Save team member error:", err);
@@ -504,11 +568,13 @@ function openDeleteTeamModal(uid) {
   deleteTeamModal.setAttribute("aria-hidden", "false");
   document.body.style.overflow = "hidden";
 }
+
 function closeDeleteTeamModal() {
   deleteTeamModal.classList.remove("open");
   deleteTeamModal.setAttribute("aria-hidden", "true");
   document.body.style.overflow = "";
 }
+
 deleteTeamModalBackdrop.addEventListener("click", closeDeleteTeamModal);
 deleteTeamModalClose.addEventListener("click", closeDeleteTeamModal);
 deleteTeamModalCancel.addEventListener("click", closeDeleteTeamModal);
@@ -517,8 +583,17 @@ deleteTeamModalConfirm.addEventListener("click", async () => {
   if (!deletingUid || deletingUid === currentAdmin?.uid) return;
   deleteTeamModalConfirm.classList.add("loading");
   deleteTeamModalConfirm.disabled = true;
+
   try {
     await deleteDoc(doc(db, "staffAccounts", deletingUid));
+
+    try {
+      const idToken = await currentAdmin.getIdToken();
+      await callEdgeFunction(EDGE_FN.deleteStaffAccount, { uid: deletingUid }, idToken);
+    } catch (e) {
+      console.warn("Edge function deleteStaffAccount warning:", e);
+    }
+
     showToast("Team member removed.");
     closeDeleteTeamModal();
   } catch (err) {
@@ -532,10 +607,6 @@ deleteTeamModalConfirm.addEventListener("click", async () => {
 
 /* ===========================================================
    MANUAL TRANSFER BANK ACCOUNTS (up to 5, admin-only)
-   Reads/writes settings/manualTransferBanks { accounts: [...] }
-   as one array on one doc — cheap (one read), and 5 entries is
-   small enough that a full-array read-modify-write is simpler
-   and safer than a subcollection for something this size.
    =========================================================== */
 const bankAccountList = document.getElementById("bankAccountList");
 const bankAccountEmpty = document.getElementById("bankAccountEmpty");
@@ -606,7 +677,7 @@ async function removeBankAccount(id) {
   } catch (err) {
     console.error("Remove bank account error:", err);
     showToast("Couldn't remove that account. Please try again.", "error");
-    loadBankAccounts(); // resync in case the local array drifted from Firestore
+    loadBankAccounts();
   }
 }
 
@@ -631,6 +702,7 @@ addBankAccountBtn.addEventListener("click", () => {
   accountNumberInput.value = "";
   resetAccountResolution();
 });
+
 cancelBankBtn.addEventListener("click", () => {
   addBankForm.style.display = "none";
   addBankAccountBtn.style.display = currentBankAccounts.length >= MAX_BANK_ACCOUNTS ? "none" : "inline-flex";
@@ -680,8 +752,7 @@ saveBankBtn.addEventListener("click", async () => {
   }
 
   const bankCode = bankCodeHidden.value;
-  const bankObj = NIGERIAN_BANKS.find(b => b.code === bankCode);
-  const bankName = bankObj ? bankObj.name : selectedBankText.textContent;
+  const bankObj = allBanks.find(b => b.code === bankCode);  const bankName = bankObj ? bankObj.name : selectedBankText.textContent;
   const newAccount = {
     id: `${bankCode}-${accountNumberInput.value}-${Date.now()}`,
     bankName,
@@ -699,7 +770,6 @@ saveBankBtn.addEventListener("click", async () => {
     showToast("Bank account added — live for all users now.");
     renderBankAccounts();
     addBankForm.style.display = "none";
-    bankSelect.value = "";
     accountNumberInput.value = "";
     resetAccountResolution();
   } catch (err) {
@@ -714,9 +784,6 @@ saveBankBtn.addEventListener("click", async () => {
 
 /* ===========================================================
    MAINTENANCE — LOGIN LOCK (admin-only)
-   Reads/writes settings/systemLock { locked, message, updatedAt,
-   updatedBy }. Toggling the switch only changes local UI state;
-   nothing is written until "Save Lock Settings" is clicked.
    =========================================================== */
 const lockToggle = document.getElementById("lockToggle");
 const lockToggleIcon = document.getElementById("lockToggleIcon");
@@ -860,8 +927,6 @@ onAuthStateChanged(auth, async (user) => {
   try {
     const snap = await getDoc(doc(db, "staffAccounts", user.uid));
     if (!snap.exists()) {
-      // Not a recognized staff account at all — bounce back to login,
-      // same guard login.html itself already enforces.
       await signOut(auth);
       window.location.href = "login.html";
       return;
@@ -879,6 +944,7 @@ onAuthStateChanged(auth, async (user) => {
       adminOnlySection.style.display = "block";
       supportOnlySection.style.display = "none";
       subscribeTeam();
+      loadAdminBanks();
       loadBankAccounts();
       loadLockSettings();
     } else {
@@ -891,86 +957,3 @@ onAuthStateChanged(auth, async (user) => {
     console.error("Load staff profile error:", err);
   }
 });
-
-/* ===========================================================
-   NOTES
-   ===========================================================
-   - Admin identity now reads staffAccounts/{uid} — this is the
-     new source of truth for every admin page's own name/avatar/
-     role, replacing the old users/{uid} read every other admin
-     page still carries as a flagged assumption. Apply the same
-     swap to dashboard.html/users.html/tasks.html/etc. whenever
-     each is next touched — none of them have been updated yet.
-
-   - THREE new Supabase Edge Functions needed, none deployed yet.
-     All three must verify the caller (Firebase ID token in the
-     Authorization header) is themselves an existing admin
-     (staffAccounts/{callerUid}.role === "admin") before doing
-     anything — support accounts must never be able to call these,
-     even by guessing the function URL directly, since the UI
-     hiding these sections is not a real security boundary on its
-     own.
-
-     create-staff-account({ fullName, username, email, password, role })
-       - Create the Firebase Auth user via Admin SDK
-         (admin.auth().createUser({ email, password })) — doing
-         this from the client instead would hijack the calling
-         admin's own session, since the client SDK signs in as
-         whatever user it just created.
-       - Write staffAccounts/{newUid} = { fullName, username,
-         email, password, role, createdAt, createdBy: callerUid }.
-
-     update-staff-account({ uid, fullName?, username?, email?,
-                             password?, role? })
-       - For any of email/password: admin.auth().updateUser(uid,
-         {...}) — the client SDK can't change another user's auth
-         credentials, only Admin SDK can.
-       - Merge the same fields into staffAccounts/{uid}.
-
-     delete-staff-account({ uid })
-       - Reject if uid === callerUid (self-delete blocked) — this
-         is the REAL enforcement; the disabled button client-side
-         is just a courtesy, not the security boundary.
-       - admin.auth().deleteUser(uid), then delete
-         staffAccounts/{uid}.
-
-   - SECURITY TRADE-OFF, flagged explicitly rather than silently
-     implemented: staffAccounts/{uid}.password stores the account's
-     password in plain, readable text, specifically so support
-     members can view their own password on this page if they
-     forget it. This is a real risk — anyone who gains read access
-     to that field (a misconfigured rule, a compromised admin
-     session, a leaked Firestore export) gets a live plaintext
-     password list for every staff account, and if any staff member
-     reuses that password elsewhere, that account is exposed too.
-     The safer alternative, if wanted instead: never store the
-     password at all, show it once at creation time only (admin
-     copies it down to share with the new hire), and if it's
-     forgotten later, have the admin trigger a password reset
-     rather than a lookup. Implemented as explicitly requested for
-     now — swap it for the safer flow if this risk isn't acceptable
-     on reflection.
-
-   - Firestore Security Rules (not written/deployed anywhere yet,
-     same as every other privileged pattern in this project) need
-     to restrict staffAccounts reads: a support account should only
-     ever be able to read its OWN doc (staffAccounts/{request.auth.uid}),
-     never the full collection — the client code above already only
-     fetches their own doc for support, but that's enforced by this
-     page's code, not by a rule, so a support account with dev tools
-     open could otherwise query the whole collection today.
-
-   - Manual Transfer Bank Accounts moved from
-     settings/manualTransferBank (single account) to
-     settings/manualTransferBanks.accounts[] (up to 5). wallet.js
-     currently reads the OLD single-doc path — it needs updating to
-     read the new array and pick/rotate among the available accounts
-     whenever it's next touched, or manual-transfer deposits will
-     silently stop showing any account at all.
-
-   - resolveBankAccount and forceLogoutAll both moved from the old
-     raw-fetch Cloud Function pattern to Supabase Edge Functions via
-     callEdgeFunction, matching the rest of this rework — see
-     wallet.js's own BACKEND NOTES for resolveBankAccount's exact
-     Flutterwave-side spec (unchanged, just a different transport).
-   =========================================================== */
