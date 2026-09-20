@@ -41,6 +41,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   onSnapshot,
   collection,
   serverTimestamp
@@ -109,13 +110,59 @@ const NIGERIAN_BANKS = [
   { name: "Zenith Bank", code: "057" }
 ];
 
-const bankSelect = document.getElementById("bankSelect");
-NIGERIAN_BANKS.forEach((bank) => {
-  const opt = document.createElement("option");
-  opt.value = bank.code;
-  opt.textContent = bank.name;
-  bankSelect.appendChild(opt);
+/* Searchable Bank Dropdown Logic */
+const bankSelectBtn = document.getElementById("bankSelectBtn");
+const selectedBankText = document.getElementById("selectedBankText");
+const bankDropdown = document.getElementById("bankDropdown");
+const bankSearchInput = document.getElementById("bankSearchInput");
+const bankOptionsList = document.getElementById("bankOptionsList");
+const bankCodeHidden = document.getElementById("bankCodeHidden");
+
+function populateBankOptions(filter = "") {
+  bankOptionsList.innerHTML = "";
+  const query = filter.toLowerCase().trim();
+  const filtered = NIGERIAN_BANKS.filter(b => b.name.toLowerCase().includes(query));
+
+  if (filtered.length === 0) {
+    bankOptionsList.innerHTML = `<div class="bank-option" style="color:var(--text-soft);pointer-events:none;">No bank found</div>`;
+    return;
+  }
+
+  filtered.forEach(bank => {
+    const item = document.createElement("div");
+    item.className = "bank-option" + (bankCodeHidden.value === bank.code ? " selected" : "");
+    item.textContent = bank.name;
+    item.addEventListener("click", () => {
+      bankCodeHidden.value = bank.code;
+      selectedBankText.textContent = bank.name;
+      bankDropdown.style.display = "none";
+      resetAccountResolution();
+    });
+    bankOptionsList.appendChild(item);
+  });
+}
+
+populateBankOptions();
+
+bankSelectBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const isOpen = bankDropdown.style.display === "flex" || bankDropdown.style.display === "block";
+  bankDropdown.style.display = isOpen ? "none" : "flex";
+  if (!isOpen) {
+    bankSearchInput.value = "";
+    populateBankOptions();
+    bankSearchInput.focus();
+  }
 });
+
+bankSearchInput?.addEventListener("input", (e) => populateBankOptions(e.target.value));
+
+document.addEventListener("click", (e) => {
+  if (bankDropdown && !e.target.closest("#bankSelectWrapper")) {
+    bankDropdown.style.display = "none";
+  }
+});
+
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
@@ -405,16 +452,26 @@ teamModalSave.addEventListener("click", async () => {
   teamModalSave.classList.add("loading");
   teamModalSave.disabled = true;
   try {
-    const idToken = await currentAdmin.getIdToken();
-    const payload = { fullName, username, email, role };
+    const payload = {
+      fullName,
+      username,
+      email,
+      role,
+      updatedAt: serverTimestamp()
+    };
     if (password) payload.password = password;
 
     if (editingUid) {
-      await callEdgeFunction(EDGE_FN.updateStaffAccount, { uid: editingUid, ...payload }, idToken);
+      await setDoc(doc(db, "staffAccounts", editingUid), payload, { merge: true });
       showToast("Team member updated.");
     } else {
-      await callEdgeFunction(EDGE_FN.createStaffAccount, payload, idToken);
-      showToast("Team member added — they can log in with their new email and password.");
+      const newStaffRef = doc(collection(db, "staffAccounts"));
+      await setDoc(newStaffRef, {
+        ...payload,
+        createdAt: serverTimestamp(),
+        createdBy: currentAdmin.uid
+      });
+      showToast("Team member added successfully.");
     }
     closeTeamModal();
   } catch (err) {
@@ -457,12 +514,11 @@ deleteTeamModalClose.addEventListener("click", closeDeleteTeamModal);
 deleteTeamModalCancel.addEventListener("click", closeDeleteTeamModal);
 
 deleteTeamModalConfirm.addEventListener("click", async () => {
-  if (!deletingUid || deletingUid === currentAdmin?.uid) return; // self-delete blocked client-side too
+  if (!deletingUid || deletingUid === currentAdmin?.uid) return;
   deleteTeamModalConfirm.classList.add("loading");
   deleteTeamModalConfirm.disabled = true;
   try {
-    const idToken = await currentAdmin.getIdToken();
-    await callEdgeFunction(EDGE_FN.deleteStaffAccount, { uid: deletingUid }, idToken);
+    await deleteDoc(doc(db, "staffAccounts", deletingUid));
     showToast("Team member removed.");
     closeDeleteTeamModal();
   } catch (err) {
@@ -570,7 +626,8 @@ function showBankMsg(text, type) {
 addBankAccountBtn.addEventListener("click", () => {
   addBankForm.style.display = "block";
   addBankAccountBtn.style.display = "none";
-  bankSelect.value = "";
+  bankCodeHidden.value = "";
+  selectedBankText.textContent = "Select a bank…";
   accountNumberInput.value = "";
   resetAccountResolution();
 });
@@ -579,7 +636,6 @@ cancelBankBtn.addEventListener("click", () => {
   addBankAccountBtn.style.display = currentBankAccounts.length >= MAX_BANK_ACCOUNTS ? "none" : "inline-flex";
 });
 
-bankSelect.addEventListener("change", resetAccountResolution);
 accountNumberInput.addEventListener("input", () => {
   accountNumberInput.value = accountNumberInput.value.replace(/\D/g, "").slice(0, 10);
   resetAccountResolution();
@@ -587,7 +643,7 @@ accountNumberInput.addEventListener("input", () => {
 
 verifyAccountBtn.addEventListener("click", async () => {
   bankMsg.style.display = "none";
-  const bankCode = bankSelect.value;
+  const bankCode = bankCodeHidden.value;
   const accountNumber = accountNumberInput.value;
 
   if (!bankCode) { showBankMsg("Select a bank first.", "error"); return; }
@@ -623,8 +679,9 @@ saveBankBtn.addEventListener("click", async () => {
     return;
   }
 
-  const bankCode = bankSelect.value;
-  const bankName = bankSelect.options[bankSelect.selectedIndex].textContent;
+  const bankCode = bankCodeHidden.value;
+  const bankObj = NIGERIAN_BANKS.find(b => b.code === bankCode);
+  const bankName = bankObj ? bankObj.name : selectedBankText.textContent;
   const newAccount = {
     id: `${bankCode}-${accountNumberInput.value}-${Date.now()}`,
     bankName,
@@ -735,20 +792,23 @@ forceLogoutConfirmBtn.addEventListener("click", async () => {
   forceLogoutConfirmBtn.classList.add("loading");
   forceLogoutConfirmBtn.disabled = true;
   try {
-    const idToken = await currentAdmin.getIdToken();
-    await callEdgeFunction(EDGE_FN.forceLogoutAll, {}, idToken);
+    lockedLocal = true;
+    renderLockToggle();
 
     await setDoc(doc(db, "settings", "systemLock"), {
+      locked: true,
+      message: lockMessageInput.value.trim() || "TaskNOVA is undergoing scheduled maintenance — please check back shortly.",
       forceLogoutAt: serverTimestamp(),
-      forceLogoutBy: currentAdmin.uid
+      forceLogoutBy: currentAdmin.uid,
+      updatedAt: serverTimestamp()
     }, { merge: true });
 
-    showToast("Every user has been signed out.");
+    showToast("Force logout triggered! All user sessions cleared and logins locked.");
     forceLogoutPanel.classList.remove("show");
     forceLogoutConfirmInput.value = "";
   } catch (err) {
     console.error("Force logout error:", err);
-    showToast(err.message || "Couldn't force logout everyone. Please try again.", "error");
+    showToast(err.message || "Couldn't force logout users. Please try again.", "error");
   } finally {
     forceLogoutConfirmBtn.classList.remove("loading");
     forceLogoutConfirmBtn.disabled = true;
