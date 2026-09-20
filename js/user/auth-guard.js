@@ -1,4 +1,4 @@
-import { doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { doc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
 
 const sessionStartTime = Date.now();
@@ -12,10 +12,20 @@ const sessionStartTime = Date.now();
 export function initAuthGuard(db, auth, user) {
   if (!user || !db || !auth) return;
 
-  onSnapshot(doc(db, "settings", "systemLock"), (snap) => {
+  onSnapshot(doc(db, "settings", "systemLock"), async (snap) => {
     if (!snap.exists()) return;
     const data = snap.data();
 
+    // 1. Exempt Admin/Staff accounts from being kicked out
+    try {
+      const staffSnap = await getDoc(doc(db, "staffAccounts", user.uid));
+      if (staffSnap.exists()) return;
+    } catch (err) {
+      console.error("Auth guard staff check error:", err);
+    }
+
+    // 2. Force Logout Check
+    let shouldLogout = false;
     if (data.forceLogoutAt) {
       const forceLogoutTime = data.forceLogoutAt.toDate
         ? data.forceLogoutAt.toDate().getTime()
@@ -28,13 +38,21 @@ export function initAuthGuard(db, auth, user) {
 
       if (forceLogoutTime > sessionStartTime && forceLogoutTime > lastSessionClear) {
         localStorage.setItem("tasknova_last_force_logout", forceLogoutTime.toString());
-        if (data.message) {
-          localStorage.setItem("tasknova_lock_message", data.message);
-        }
-        signOut(auth).then(() => {
-          window.location.href = "login.html?reason=maintenance";
-        });
+        shouldLogout = true;
       }
+    }
+
+    // 3. Active System Lock Check
+    if (data.locked) {
+      shouldLogout = true;
+    }
+
+    // 4. Execute Sign Out and Redirect
+    if (shouldLogout) {
+      const msg = data.message || "System is undergoing maintenance. Please check back shortly.";
+      localStorage.setItem("tasknova_lock_message", msg);
+      await signOut(auth);
+      window.location.href = `login.html?maintenance=true&msg=${encodeURIComponent(msg)}`;
     }
   });
 }
