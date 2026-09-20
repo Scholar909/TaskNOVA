@@ -1034,6 +1034,7 @@ virtualCancelBtn.addEventListener("click", async () => {
 });
 
 /* ===== METHOD 3: MANUAL TRANSFER ===== */
+const manualBankSelect = document.getElementById("manualBankSelect");
 const manualAmountInput = document.getElementById("manualAmount");
 const manualProceedBtn = document.getElementById("manualProceedBtn");
 const mtStepAmount = document.getElementById("mtStepAmount");
@@ -1048,6 +1049,7 @@ const manualPaidBtn = document.getElementById("manualPaidBtn");
 const manualCancelBtn = document.getElementById("manualCancelBtn");
 
 const MANUAL_TRANSFER_FEE = 50;
+let manualTransferAccounts = [];
 let manualDestinationBank = null;
 let manualPendingAmount = 0;
 
@@ -1058,11 +1060,36 @@ NIGERIAN_BANK_NAMES.forEach((name) => {
   mtSenderBank.appendChild(opt);
 });
 
-onSnapshot(doc(db, "settings", "manualTransferBank"), (snap) => {
-  manualDestinationBank = snap.exists() ? snap.data() : null;
+onSnapshot(doc(db, "settings", "manualTransferBanks"), (snap) => {
+  manualTransferAccounts = snap.exists() ? (snap.data().accounts || []) : [];
+  populateManualBankDropdown();
 }, (err) => {
-  console.error("Manual transfer bank details listener error:", err);
+  console.error("Manual transfer bank accounts listener error:", err);
 });
+
+function populateManualBankDropdown() {
+  if (!manualBankSelect) return;
+  manualBankSelect.innerHTML = `<option value="" disabled selected>Select bank</option>`;
+
+  if (manualTransferAccounts.length === 0) {
+    const opt = document.createElement("option");
+    opt.disabled = true;
+    opt.textContent = "No bank accounts added by admin yet";
+    manualBankSelect.appendChild(opt);
+    return;
+  }
+
+  const seenBankNames = new Set();
+  manualTransferAccounts.forEach((acc) => {
+    if (acc.bankName && !seenBankNames.has(acc.bankName)) {
+      seenBankNames.add(acc.bankName);
+      const opt = document.createElement("option");
+      opt.value = acc.id || acc.bankName;
+      opt.textContent = acc.bankName;
+      manualBankSelect.appendChild(opt);
+    }
+  });
+}
 
 function updateManualPaidState() {
   manualPaidBtn.disabled = !mtSenderBank.value || !mtSenderName.value.trim();
@@ -1075,26 +1102,42 @@ function resetManualPanel() {
   mtStepAmount.style.display = "";
   mtSenderBank.value = "";
   mtSenderName.value = "";
+  if (manualBankSelect) manualBankSelect.value = "";
   updateManualPaidState();
   requestAnimationFrame(syncWalletHeight);
 }
 
 manualProceedBtn.addEventListener("click", () => {
   clearPanelMsg(depositMsg);
+
+  const selectedBankId = manualBankSelect?.value;
   const amount = Number(manualAmountInput.value);
+
+  if (!selectedBankId) {
+    showPanelMsg(depositMsg, "error", "Please select a bank first.");
+    return;
+  }
+
   if (!amount || amount < 100) {
     showPanelMsg(depositMsg, "error", "Enter an amount of at least ₦100.");
     return;
   }
-  if (!manualDestinationBank) {
-    showPanelMsg(depositMsg, "error", "Manual transfer isn't set up yet — please try another method or contact support.");
+
+  const selectedBank = manualTransferAccounts.find(
+    (acc) => acc.id === selectedBankId || acc.bankName === selectedBankId
+  );
+
+  if (!selectedBank) {
+    showPanelMsg(depositMsg, "error", "Selected bank account is unavailable. Please choose another.");
     return;
   }
 
+  manualDestinationBank = selectedBank;
   manualPendingAmount = amount;
-  mtBankName.textContent = manualDestinationBank.bankName || "—";
-  mtAccountNumber.textContent = manualDestinationBank.accountNumber || "—";
-  mtAccountName.textContent = manualDestinationBank.accountName || "—";
+
+  mtBankName.textContent = selectedBank.bankName || "—";
+  mtAccountNumber.textContent = selectedBank.accountNumber || "—";
+  mtAccountName.textContent = selectedBank.accountName || "—";
   mtTotalAmount.textContent = formatNaira(amount + MANUAL_TRANSFER_FEE);
 
   mtStepAmount.style.display = "none";
