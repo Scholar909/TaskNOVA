@@ -1157,6 +1157,11 @@ manualPaidBtn.addEventListener("click", async () => {
   setBtnLoading(manualPaidBtn, true);
 
   try {
+    const senderBank = mtSenderBank.value;
+    const senderName = mtSenderName.value.trim();
+    // Reference formatted as: "Bank Name — Account Name"
+    const reference = `From: ${senderBank} — ${senderName}`;
+
     const depositRef = doc(collection(db, "manualDeposits"));
     await setDoc(depositRef, {
       uid: currentUser.uid,
@@ -1164,8 +1169,9 @@ manualPaidBtn.addEventListener("click", async () => {
       fee: MANUAL_TRANSFER_FEE,
       totalExpected: manualPendingAmount + MANUAL_TRANSFER_FEE,
       destinationBank: manualDestinationBank,
-      senderBank: mtSenderBank.value,
-      senderName: mtSenderName.value.trim(),
+      senderBank: senderBank,
+      senderName: senderName,
+      reference: reference, // <-- ADDED
       status: "pending_review",
       createdAt: serverTimestamp()
     });
@@ -1179,6 +1185,7 @@ manualPaidBtn.addEventListener("click", async () => {
       status: "pending_review",
       method: "manual_transfer",
       manualDepositId: depositRef.id,
+      reference: reference, // <-- ADDED
       createdAt: serverTimestamp()
     });
 
