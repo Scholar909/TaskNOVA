@@ -326,13 +326,20 @@
               <div class="deposit-method-panel" id="methodManual" data-method="manual" style="display:none;">
 
                 <div class="dm-step" id="mtStepAmount">
+                  <div class="w-field">
+                    <label for="manualBankSelect">Select Bank</label>
+                    <select id="manualBankSelect">
+                      <option value="" disabled selected>Select bank</option>
+                    </select>
+                  </div>
+
                   <div class="amount-field">
                     <label for="manualAmount">Amount</label>
                     <div class="amount-input-wrap">
                       <span class="currency-prefix">₦</span>
                       <input type="number" id="manualAmount" min="100" step="1" placeholder="0.00" inputmode="numeric">
                     </div>
-                    <span class="field-note">A ₦20 transfer charge is added on top of this amount.</span>
+                    <span class="field-note">A ₦50 transfer charge is added on top of this amount.</span>
                   </div>
                   <button type="button" class="btn btn-primary" id="manualProceedBtn">
                     <span class="btn-spinner"></span>
@@ -340,6 +347,7 @@
                     <i class="bx bx-right-arrow-alt"></i>
                   </button>
                 </div>
+
 
                 <div class="dm-step" id="mtStepPending" style="display:none;">
                   <div class="dm-warning">
@@ -400,18 +408,18 @@
                 <div class="fee-row total"><span>You'll receive</span><span id="withdrawReceiveValue">₦0.00</span></div>
               </div>
 
-<div class="w-field">
-  <label for="bankSearch">Search & Select Bank</label>
-  <input 
-    type="text" 
-    id="bankSearch" 
-    placeholder="Type bank name or code to filter..." 
-    style="margin-bottom: 8px;"
-  />
-  <select id="bankSelect" name="bankCode">
-    <option value="" disabled selected>Loading banks…</option>
-  </select>
-</div>
+              <div class="w-field">
+              <label for="bankSearch">Search & Select Bank</label>
+              <input 
+                type="text" 
+                id="bankSearch" 
+                placeholder="Type bank name or code to filter..." 
+                style="margin-bottom: 8px;"
+              />
+              <select id="bankSelect" name="bankCode">
+                <option value="" disabled selected>Loading banks…</option>
+              </select>
+              </div>
 
               
               <div class="w-field">
