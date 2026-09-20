@@ -13,6 +13,7 @@
       instruction. Shows the username instead.
    ========================================================= */
 import { callEdgeFunction } from "../supabase.js";
+import { initAuthGuard } from "./auth-guard.js";
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {
@@ -720,7 +721,9 @@ let unsubscribeTx = null;
 let tawkSynced = false;
 
 onAuthStateChanged(auth, (user) => {
-  if (!user) {
+  if (user) {
+    initAuthGuard(db, auth, user);
+  } else {
     window.location.href = "login.html";
     return;
   }

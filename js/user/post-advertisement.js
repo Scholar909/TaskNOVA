@@ -26,6 +26,7 @@ import {
   uploadBytesResumable,
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-storage.js";
+import { initAuthGuard } from "./auth-guard.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -898,7 +899,9 @@ const removeAdsStatus = document.getElementById("removeAdsStatus");
 let unsubscribeUserDoc = null;
 
 onAuthStateChanged(auth, (user) => {
-  if (!user) {
+  if (user) {
+    initAuthGuard(db, auth, user);
+  } else {
     window.location.href = "login.html";
     return;
   }

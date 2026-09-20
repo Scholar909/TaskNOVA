@@ -38,6 +38,8 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { callEdgeFunction } from "../supabase.js";
+import { initAuthGuard } from "./auth-guard.js";
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -536,7 +538,9 @@ let unsubscribeUserDoc = null;
 let unsubscribeTx = null;
 
 onAuthStateChanged(auth, (user) => {
-  if (!user) {
+  if (user) {
+    initAuthGuard(db, auth, user);
+  } else {
     window.location.href = "login.html";
     return;
   }
@@ -1438,3 +1442,27 @@ swapForm.addEventListener("submit", async (e) => {
     setBtnLoading(swapSubmit, false);
   }
 });
+
+/* ---------------------------------------------------------
+   FETCH ADMIN MANUAL TRANSFER BANK ACCOUNTS FOR DEPOSITS
+   --------------------------------------------------------- */
+function loadManualTransferAccounts(containerEl) {
+  onSnapshot(doc(db, "settings", "manualTransferBanks"), (snap) => {
+    if (!snap.exists() || !containerEl) return;
+    const accounts = snap.data().accounts || [];
+    if (accounts.length === 0) {
+      containerEl.innerHTML = `<p class="mc-hint">No manual transfer bank account available at the moment.</p>`;
+      return;
+    }
+
+    containerEl.innerHTML = accounts.map(acc => `
+      <div class="bank-account-card">
+        <div class="bac-icon"><i class="bx bx-bank"></i></div>
+        <div class="bac-info">
+          <strong>${acc.accountName}</strong>
+          <span>${acc.bankName} · <code>${acc.accountNumber}</code></span>
+        </div>
+      </div>
+    `).join("");
+  });
+}
