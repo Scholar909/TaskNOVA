@@ -374,6 +374,7 @@ function openTeamModal(uid) {
     teamPasswordHint.textContent = "(leave blank to keep current password)";
     teamPassword.placeholder = "Leave blank to keep unchanged";
     teamPassword.value = "";
+    teamEmail.disabled = true; // Disable editing email for existing members
     getDoc(doc(db, "staffAccounts", editingUid)).then((snap) => {
       if (!snap.exists()) return;
       const data = snap.data();
@@ -390,6 +391,7 @@ function openTeamModal(uid) {
     teamUsername.value = "";
     teamEmail.value = "";
     teamPassword.value = "";
+    teamEmail.disabled = false; // Enable email for new team member creation
     document.querySelector('input[name="teamRole"][value="support"]').checked = true;
   }
 
