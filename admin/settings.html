@@ -275,11 +275,24 @@
             <i class="bx bx-plus"></i> Add Bank Account
           </button>
 
-          <div class="settings-form" id="addBankForm" style="display:none;margin-top:12px;">
+                    <div class="settings-form" id="addBankForm" style="display:none;margin-top:12px;">
             <label class="mc-field-label">Bank</label>
-            <select id="bankSelect">
-              <option value="">Select a bank…</option>
-            </select>
+            <div class="bank-select-wrapper" id="bankSelectWrapper">
+              <button type="button" class="bank-select-btn" id="bankSelectBtn">
+                <span id="selectedBankText">Select a bank…</span>
+                <i class="bx bx-chevron-down"></i>
+              </button>
+              <div class="bank-dropdown" id="bankDropdown" style="display:none;">
+                <div class="bank-search-wrap">
+                  <i class="bx bx-search"></i>
+                  <input type="text" id="bankSearchInput" placeholder="Search bank name..." autocomplete="off">
+                </div>
+                <div class="bank-options-list" id="bankOptionsList">
+                  <!-- Populated dynamically -->
+                </div>
+              </div>
+            </div>
+            <input type="hidden" id="bankCodeHidden" value="">
 
             <label class="mc-field-label">Account Number</label>
             <div class="verify-row">
@@ -294,7 +307,7 @@
             <div class="tc-actions" style="margin-top:10px;">
               <button type="button" class="btn btn-ghost" id="cancelBankBtn">Cancel</button>
               <button type="button" class="btn btn-primary" id="saveBankBtn" disabled>
-                <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save Account</span>
+                <span class="btn-spinner"></span><i class="bx bx-save"></i><span class="btn-label">Save</span>
               </button>
             </div>
           </div>
@@ -338,7 +351,7 @@
               <input type="text" id="forceLogoutConfirmInput" placeholder="Type LOGOUT ALL to confirm" autocomplete="off">
               <div class="tc-actions">
                 <button type="button" class="btn btn-ghost" data-act="force-logout-cancel">Cancel</button>
-                <button type="button" class="btn btn-danger" id="forceLogoutConfirmBtn" disabled><span class="btn-spinner"></span><i class="bx bx-log-out"></i><span class="btn-label">Confirm — Log Everyone Out</span></button>
+                <button type="button" class="btn btn-danger" id="forceLogoutConfirmBtn" disabled><span class="btn-spinner"></span><i class="bx bx-log-out"></i><span class="btn-label">Confirm</span></button>
               </div>
             </div></div></div>
           </div>
