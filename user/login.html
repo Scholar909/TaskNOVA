@@ -1072,6 +1072,7 @@
       getFirestore,
       doc,
       setDoc,
+      getDoc,
       getDocs,
       collection,
       query,
@@ -1091,6 +1092,18 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+
+    // Check URL query parameters for maintenance flag on page load
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get("maintenance") === "true" || urlParams.get("reason") === "maintenance") {
+  const msg = urlParams.get("msg") || localStorage.getItem("tasknova_lock_message") || "TaskNOVA is currently undergoing maintenance. Please check back shortly.";
+  const loginMsgEl = document.getElementById("loginMsg");
+  if (loginMsgEl) {
+    loginMsgEl.className = "form-msg error show";
+    loginMsgEl.innerHTML = `<i class="bx bx-error-circle"></i> <span>${msg}</span>`;
+  }
+}
+
 
     /* ---------------------------------------------------------
        HELPERS
@@ -1243,7 +1256,6 @@
     const referralLockIcon = document.getElementById("referralLockIcon");
     const referralAutoNote = document.getElementById("referralAutoNote");
 
-    const urlParams = new URLSearchParams(window.location.search);
     const refFromUrl = urlParams.get("ref");
 
     if (refFromUrl) {
@@ -1546,9 +1558,40 @@ usernameInput.addEventListener("blur", () => {
       }
 
       setLoading(loginSubmit, true);
-      try {
+            try {
         const cred = await signInWithEmailAndPassword(auth, email, password);
         const user = cred.user;
+
+        // Verify that a document exists in the 'users' collection
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        if (!userSnap.exists()) {
+          await signOut(auth);
+          showMsg(loginMsg, "error", "Access denied. Only user accounts can log in here.");
+          setLoading(loginSubmit, false);
+          syncHeight();
+          return;
+        }
+
+        // System lock check
+        const lockSnap = await getDoc(doc(db, "settings", "systemLock"));
+        if (lockSnap.exists()) {
+          const lockData = lockSnap.data();
+          if (lockData.locked) {
+            const staffSnap = await getDoc(doc(db, "staffAccounts", user.uid));
+            const isStaff = staffSnap.exists();
+        
+            if (!isStaff) {
+              await signOut(auth);
+              const loginMsgEl = document.getElementById("loginMsg");
+              if (loginMsgEl) {
+                loginMsgEl.className = "form-msg error show";
+                loginMsgEl.innerHTML = `<i class="bx bx-error-circle"></i> <span>${lockData.message || "System is currently locked for maintenance."}</span>`;
+              }
+              setLoading(loginSubmit, false);
+              return; // Stop redirection
+            }
+          }
+        }
 
         if (!user.emailVerified) {
           pendingUnverifiedUser = user;
