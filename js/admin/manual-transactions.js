@@ -341,8 +341,15 @@ async function approveDeposit(depositId, deposit, fee, cardEl, btnEl) {
       const userSnap = await transaction.get(userRef);
       if (!userSnap.exists()) throw new Error("User account not found.");
       const balance = userSnap.data().wallet?.deposit ?? 0;
+      const lifetimeDeposited = userSnap.data().lifetimeDeposited ?? 0;
 
-      transaction.update(userRef, { "wallet.deposit": balance + (deposit.amount || 0) });
+      transaction.update(userRef, {
+        "wallet.deposit": balance + (deposit.amount || 0),
+        // Separate, never-decreasing counter — refer.js's one-time ₦100
+        // referral reward is keyed off this, not the spendable balance
+        // above, so every real deposit path has to touch it.
+        lifetimeDeposited: lifetimeDeposited + (deposit.amount || 0)
+      });
       transaction.update(depositRef, { status: "approved", resolvedAt: serverTimestamp() });
       transaction.update(mirrorTxRef, { status: "successful", direction: "credit" });
 

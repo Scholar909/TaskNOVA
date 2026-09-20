@@ -165,14 +165,14 @@ function formatNaira(amount) {
 }
 
 /* ===========================================================
-   AUTH GUARD — admin only.
-   ASSUMPTION: users/{uid}.isAdmin === true marks an admin
-   account, matching the accountType-style fields already used
-   on the user side. If the existing admin login page checks
-   something else (custom claims, a separate "admins" collection,
-   etc.) let me know so every admin page can be aligned to it.
+   AUTH GUARD — staffAccounts/{uid}, either role (admin or
+   support) is allowed in; role only affects what's shown once
+   past login, same pattern as settings.js. Replaces the old
+   users/{uid}.isAdmin flag now that admin/support accounts live
+   in their own collection entirely, separate from platform users.
    =========================================================== */
 const menuUserName = document.getElementById("menuUserName");
+const menuUserType = document.getElementById("menuUserType");
 const menuUserAvatar = document.getElementById("menuUserAvatar");
 
 let currentUser = null;
@@ -184,10 +184,11 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));
+    const snap = await getDoc(doc(db, "staffAccounts", user.uid));
     const data = snap.exists() ? snap.data() : {};
 
-    if (!data.isAdmin) {
+    if (!data.role) {
+      await signOut(auth);
       window.location.href = "login.html";
       return;
     }
@@ -197,6 +198,7 @@ onAuthStateChanged(auth, async (user) => {
     const fullName = data.fullName || "Admin";
     const initial = fullName.trim().charAt(0).toUpperCase() || "A";
     if (menuUserName) menuUserName.textContent = fullName;
+    if (menuUserType) menuUserType.textContent = data.role === "admin" ? "Admin" : "Support";
     if (menuUserAvatar) menuUserAvatar.textContent = initial;
 
     loadDashboardData();
@@ -208,19 +210,23 @@ onAuthStateChanged(auth, async (user) => {
 
 /* ===========================================================
    TOTAL USERS + ACCOUNT BREAKDOWN
+   Breakdown is now cross-collection: platform Users (the `users`
+   collection) vs. staff Admin / Support accounts (`staffAccounts`,
+   split by role) — replaces the old Student/Teacher/None split
+   now that accountType has been removed from signup entirely.
    =========================================================== */
 const totalUsersValue = document.getElementById("totalUsersValue");
 const breakdownDonut = document.getElementById("breakdownDonut");
 const donutTotal = document.getElementById("donutTotal");
 const breakdownLegend = document.getElementById("breakdownLegend");
 
-function renderBreakdown({ students, teachers, none, total }) {
+function renderBreakdown({ users, admin, support, total }) {
   const pct = (n) => (total > 0 ? Math.round((n / total) * 1000) / 10 : 0);
 
   const segments = [
-    { label: "Students", count: students, color: "var(--primary)" },
-    { label: "Teachers", count: teachers, color: "var(--veltrix)" },
-    { label: "None", count: none, color: "var(--warning)" }
+    { label: "Users", count: users, color: "var(--primary)" },
+    { label: "Admin", count: admin, color: "var(--veltrix)" },
+    { label: "Support", count: support, color: "var(--success)" }
   ];
 
   let cursor = 0;
@@ -250,21 +256,24 @@ function renderBreakdown({ students, teachers, none, total }) {
 async function loadTotalsAndBreakdown() {
   try {
     const usersRef = collection(db, "users");
-    const [totalSnap, studentsSnap, teachersSnap] = await Promise.all([
+    const staffRef = collection(db, "staffAccounts");
+    const [usersSnap, adminSnap, supportSnap] = await Promise.all([
       getCountFromServer(usersRef),
-      getCountFromServer(query(usersRef, where("accountType", "==", "Student"))),
-      getCountFromServer(query(usersRef, where("accountType", "==", "Teacher")))
+      getCountFromServer(query(staffRef, where("role", "==", "admin"))),
+      getCountFromServer(query(staffRef, where("role", "==", "support")))
     ]);
 
-    const total = totalSnap.data().count;
-    const students = studentsSnap.data().count;
-    const teachers = teachersSnap.data().count;
-    const none = Math.max(0, total - students - teachers);
+    const users = usersSnap.data().count;
+    const admin = adminSnap.data().count;
+    const support = supportSnap.data().count;
+    const total = users + admin + support;
 
+    // The top "Total Users" card is platform customers only — unaffected
+    // by staff accounts, so it keeps using the same users-collection count.
     totalUsersValue.classList.remove("skeleton");
-    totalUsersValue.textContent = total.toLocaleString("en-NG");
+    totalUsersValue.textContent = users.toLocaleString("en-NG");
 
-    renderBreakdown({ students, teachers, none, total });
+    renderBreakdown({ users, admin, support, total });
   } catch (err) {
     console.error("Totals/breakdown load error:", err);
     totalUsersValue.classList.remove("skeleton");
@@ -407,17 +416,17 @@ function loadDashboardData() {
       (admin page 5) will read and let an admin reconcile, so
       build it once and both pages stay in sync automatically.
 
-   3. Total Users and the Student/Teacher/None breakdown use
-      getCountFromServer (Firestore aggregation queries) instead
-      of downloading every user document — cheap regardless of
-      how large the users collection grows. accountType is
-      assumed to be exactly "Student" or "Teacher" (matching
-      what's already stored today); anything else, including a
-      missing field, falls into "None".
+   3. Total Users and the Users/Admin/Support breakdown use
+      getCountFromServer (Firestore aggregation queries) across
+      two collections — users (platform customers) and
+      staffAccounts (admin/support staff, filtered by role) —
+      instead of downloading every document. Cheap regardless of
+      how large either collection grows.
 
-   4. Admin auth guard assumes users/{uid}.isAdmin === true. If
-      the admin login page already built uses a different check
-      (custom claims, a separate admins/{uid} collection, etc.),
-      tell me and I'll update this guard everywhere going forward
-      instead of just here.
+   4. Admin auth guard reads staffAccounts/{uid}.role (either
+      "admin" or "support" passes) — resolves the old flagged
+      assumption about users/{uid}.isAdmin, which is no longer
+      used anywhere. Every other admin page still needs this same
+      swap applied — they're carrying the same now-outdated
+      assumption in their own notes.
    =========================================================== */

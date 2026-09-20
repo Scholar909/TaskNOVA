@@ -1,6 +1,33 @@
 /* =========================================================
    TASKNOVA ADMIN — SETTINGS PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Full rewrite this pass — see chat for context. Key changes:
+   1. Admin identity now reads staffAccounts/{uid}, not
+      users/{uid} — admins and support are no longer part of the
+      regular platform-user collection at all. This resolves the
+      "flagged assumption" every other admin page has carried
+      since the start of this build; those pages still need the
+      same swap applied whenever they're next touched.
+   2. NEW: Team Members section (admin-only) — add/edit/delete
+      admin and support accounts, each with their own individual
+      email/password login (no more shared admin credentials).
+      Creating/editing/deleting another Auth account needs
+      Firebase Admin SDK privileges, so these three actions go
+      through Supabase Edge Functions (none deployed yet — full
+      spec in the NOTES at the end), not direct client SDK calls.
+   3. NEW: support-role view — a single read-only "My Details"
+      card (name/username/email/password) instead of any of the
+      admin sections. See the NOTES for the real security
+      trade-off in storing a readable password at all.
+   4. Manual Transfer Bank Accounts is now a LIST of up to 5
+      accounts (was a single account) — settings/manualTransferBanks
+      { accounts: [...] }, not settings/manualTransferBank.
+      wallet.js reads the OLD single-doc path and needs updating
+      to read this new array whenever it's next touched.
+   5. resolveAccount and forceLogoutAll switched from the old
+      Cloud Function pattern to Supabase Edge Functions, matching
+      the rest of this rework.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -14,8 +41,11 @@ import {
   doc,
   getDoc,
   setDoc,
+  onSnapshot,
+  collection,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { callEdgeFunction } from "../supabase.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -26,24 +56,26 @@ const firebaseConfig = {
   appId: "1:303980894317:web:7a4be9b7face44a22bc764"
 };
 
-// Cloud Function endpoints — same pattern as wallet.js's CLOUD_FN block.
-// Secret keys (Paystack, etc.) live server-side only, never here.
-const CLOUD_FN = {
-  resolveAccount: "https://REGION-PROJECT.cloudfunctions.net/resolveBankAccount",
-  // Placeholder — this function does not exist yet. See the NOTES block
-  // at the bottom of this file for exactly what it needs to do.
-  forceLogoutAll: "https://REGION-PROJECT.cloudfunctions.net/forceLogoutAll"
+const EDGE_FN = {
+  resolveAccount: "resolve-bank-account",
+  forceLogoutAll: "force-logout-all",
+  createStaffAccount: "create-staff-account",
+  updateStaffAccount: "update-staff-account",
+  deleteStaffAccount: "delete-staff-account"
 };
+
+const MAX_BANK_ACCOUNTS = 5;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
 let currentAdmin = null;
+let currentStaffDoc = null; // { role, fullName, username, email, password }
 
 /* ---------------------------------------------------------
-   NIGERIAN BANKS (Paystack bank codes) — same static list
-   wallet.js already uses, kept in sync here.
+   NIGERIAN BANKS — same static list wallet.js/other admin
+   pages already use.
    --------------------------------------------------------- */
 const NIGERIAN_BANKS = [
   { name: "Access Bank", code: "044" },
@@ -208,40 +240,344 @@ function escapeHtml(str) {
 function formatDate(ts) {
   if (!ts) return "—";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) +
-    " · " + d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" });
 }
 
 /* ===========================================================
-   MANUAL TRANSFER BANK DETAILS
-   Reads/writes settings/manualTransferBank { bankName, bankCode,
-   accountNumber, accountName, updatedAt, updatedBy } — the exact
-   doc wallet.js's deposit page already listens to live via
-   onSnapshot for its manual bank-transfer method.
+   TEAM MEMBERS (admin-only)
+   Reads the staffAccounts collection live — small collection
+   (a handful of staff), so one unfiltered onSnapshot is the
+   simplest correct approach, no pagination needed.
    =========================================================== */
+const teamList = document.getElementById("teamList");
+const teamEmpty = document.getElementById("teamEmpty");
+let unsubscribeTeam = null;
+
+function subscribeTeam() {
+  unsubscribeTeam = onSnapshot(collection(db, "staffAccounts"), (snap) => {
+    if (snap.empty) {
+      teamList.innerHTML = "";
+      teamEmpty.style.display = "flex";
+      return;
+    }
+    teamEmpty.style.display = "none";
+    teamList.innerHTML = snap.docs.map((d) => renderTeamCard(d.id, d.data())).join("");
+    wireTeamCardActions();
+  }, (err) => {
+    console.error("Team list error:", err);
+    teamList.innerHTML = "";
+    teamEmpty.style.display = "flex";
+  });
+}
+
+function renderTeamCard(uid, data) {
+  const isSelf = uid === currentAdmin?.uid;
+  const initial = (data.fullName || "?").trim().charAt(0).toUpperCase();
+  return `
+    <div class="team-card" data-uid="${uid}">
+      <div class="team-avatar">${initial}</div>
+      <div class="team-info">
+        <strong>${escapeHtml(data.fullName || "—")}${isSelf ? " (you)" : ""}</strong>
+        <span>@${escapeHtml(data.username || "—")} · ${escapeHtml(data.email || "—")}</span>
+      </div>
+      <span class="role-badge ${data.role === "admin" ? "admin" : "support"}">${data.role === "admin" ? "Admin" : "Support"}</span>
+      <div class="team-actions">
+        <button type="button" class="team-icon-btn" data-act="edit-team" aria-label="Edit"><i class="bx bx-edit-alt"></i></button>
+        <button type="button" class="team-icon-btn danger" data-act="delete-team" ${isSelf ? "disabled" : ""} aria-label="Remove" title="${isSelf ? "You can't remove your own account — ask another admin to do it" : "Remove"}"><i class="bx bx-trash"></i></button>
+      </div>
+    </div>`;
+}
+
+function wireTeamCardActions() {
+  teamList.querySelectorAll('[data-act="edit-team"]').forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const uid = e.currentTarget.closest(".team-card").dataset.uid;
+      openTeamModal(uid);
+    });
+  });
+  teamList.querySelectorAll('[data-act="delete-team"]').forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const uid = e.currentTarget.closest(".team-card").dataset.uid;
+      openDeleteTeamModal(uid);
+    });
+  });
+}
+
+/* ---------------------------------------------------------
+   ADD / EDIT TEAM MEMBER MODAL
+   --------------------------------------------------------- */
+const teamModal = document.getElementById("teamModal");
+const teamModalBackdrop = document.getElementById("teamModalBackdrop");
+const teamModalClose = document.getElementById("teamModalClose");
+const teamModalCancel = document.getElementById("teamModalCancel");
+const teamModalTitle = document.getElementById("teamModalTitle");
+const teamModalSave = document.getElementById("teamModalSave");
+const teamModalMsg = document.getElementById("teamModalMsg");
+const teamFullName = document.getElementById("teamFullName");
+const teamUsername = document.getElementById("teamUsername");
+const teamEmail = document.getElementById("teamEmail");
+const teamPassword = document.getElementById("teamPassword");
+const teamPasswordHint = document.getElementById("teamPasswordHint");
+const teamPasswordToggle = document.getElementById("teamPasswordToggle");
+
+let editingUid = null;
+
+function openTeamModal(uid) {
+  editingUid = uid || null;
+  teamModalMsg.style.display = "none";
+  teamPassword.type = "password";
+  teamPasswordToggle.innerHTML = '<i class="bx bx-hide"></i>';
+
+  if (editingUid) {
+    const card = teamList.querySelector(`.team-card[data-uid="${editingUid}"]`);
+    teamModalTitle.textContent = "Edit Team Member";
+    teamPasswordHint.textContent = "(leave blank to keep their current password)";
+    teamPassword.placeholder = "Leave blank to keep unchanged";
+    teamPassword.value = "";
+    // Pull current values straight from Firestore rather than the
+    // rendered card, so nothing's lost to text truncation in the DOM.
+    getDoc(doc(db, "staffAccounts", editingUid)).then((snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      teamFullName.value = data.fullName || "";
+      teamUsername.value = data.username || "";
+      teamEmail.value = data.email || "";
+      document.querySelector(`input[name="teamRole"][value="${data.role}"]`).checked = true;
+    });
+  } else {
+    teamModalTitle.textContent = "Add Team Member";
+    teamPasswordHint.textContent = "(they'll use this to log in)";
+    teamPassword.placeholder = "Min. 6 characters";
+    teamFullName.value = "";
+    teamUsername.value = "";
+    teamEmail.value = "";
+    teamPassword.value = "";
+    document.querySelector('input[name="teamRole"][value="support"]').checked = true;
+  }
+
+  teamModal.classList.add("open");
+  teamModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeTeamModal() {
+  teamModal.classList.remove("open");
+  teamModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+document.getElementById("addTeamMemberBtn").addEventListener("click", () => openTeamModal(null));
+teamModalBackdrop.addEventListener("click", closeTeamModal);
+teamModalClose.addEventListener("click", closeTeamModal);
+teamModalCancel.addEventListener("click", closeTeamModal);
+teamPasswordToggle.addEventListener("click", () => {
+  const isPw = teamPassword.type === "password";
+  teamPassword.type = isPw ? "text" : "password";
+  teamPasswordToggle.innerHTML = isPw ? '<i class="bx bx-show"></i>' : '<i class="bx bx-hide"></i>';
+});
+
+function showTeamModalMsg(text) {
+  teamModalMsg.style.display = "block";
+  teamModalMsg.className = "mc-msg error";
+  teamModalMsg.textContent = text;
+}
+
+teamModalSave.addEventListener("click", async () => {
+  const fullName = teamFullName.value.trim();
+  const username = teamUsername.value.trim();
+  const email = teamEmail.value.trim();
+  const password = teamPassword.value;
+  const role = document.querySelector('input[name="teamRole"]:checked').value;
+
+  if (!fullName || !username || !email) {
+    showTeamModalMsg("Please fill in name, username, and email.");
+    return;
+  }
+  if (!editingUid && (!password || password.length < 6)) {
+    showTeamModalMsg("Password must be at least 6 characters.");
+    return;
+  }
+  if (password && password.length < 6) {
+    showTeamModalMsg("Password must be at least 6 characters.");
+    return;
+  }
+
+  teamModalSave.classList.add("loading");
+  teamModalSave.disabled = true;
+  try {
+    const idToken = await currentAdmin.getIdToken();
+    const payload = { fullName, username, email, role };
+    if (password) payload.password = password;
+
+    if (editingUid) {
+      await callEdgeFunction(EDGE_FN.updateStaffAccount, { uid: editingUid, ...payload }, idToken);
+      showToast("Team member updated.");
+    } else {
+      await callEdgeFunction(EDGE_FN.createStaffAccount, payload, idToken);
+      showToast("Team member added — they can log in with their new email and password.");
+    }
+    closeTeamModal();
+  } catch (err) {
+    console.error("Save team member error:", err);
+    showTeamModalMsg(err.message || "Couldn't save this team member. Please try again.");
+  } finally {
+    teamModalSave.classList.remove("loading");
+    teamModalSave.disabled = false;
+  }
+});
+
+/* ---------------------------------------------------------
+   DELETE TEAM MEMBER MODAL
+   --------------------------------------------------------- */
+const deleteTeamModal = document.getElementById("deleteTeamModal");
+const deleteTeamModalBackdrop = document.getElementById("deleteTeamModalBackdrop");
+const deleteTeamModalClose = document.getElementById("deleteTeamModalClose");
+const deleteTeamModalCancel = document.getElementById("deleteTeamModalCancel");
+const deleteTeamModalConfirm = document.getElementById("deleteTeamModalConfirm");
+const deleteTeamModalText = document.getElementById("deleteTeamModalText");
+
+let deletingUid = null;
+
+function openDeleteTeamModal(uid) {
+  deletingUid = uid;
+  const card = teamList.querySelector(`.team-card[data-uid="${uid}"]`);
+  const name = card?.querySelector(".team-info strong")?.textContent || "this team member";
+  deleteTeamModalText.textContent = `${name} will lose admin platform access entirely and can no longer log in.`;
+  deleteTeamModal.classList.add("open");
+  deleteTeamModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+function closeDeleteTeamModal() {
+  deleteTeamModal.classList.remove("open");
+  deleteTeamModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+deleteTeamModalBackdrop.addEventListener("click", closeDeleteTeamModal);
+deleteTeamModalClose.addEventListener("click", closeDeleteTeamModal);
+deleteTeamModalCancel.addEventListener("click", closeDeleteTeamModal);
+
+deleteTeamModalConfirm.addEventListener("click", async () => {
+  if (!deletingUid || deletingUid === currentAdmin?.uid) return; // self-delete blocked client-side too
+  deleteTeamModalConfirm.classList.add("loading");
+  deleteTeamModalConfirm.disabled = true;
+  try {
+    const idToken = await currentAdmin.getIdToken();
+    await callEdgeFunction(EDGE_FN.deleteStaffAccount, { uid: deletingUid }, idToken);
+    showToast("Team member removed.");
+    closeDeleteTeamModal();
+  } catch (err) {
+    console.error("Delete team member error:", err);
+    showToast(err.message || "Couldn't remove this team member. Please try again.", "error");
+  } finally {
+    deleteTeamModalConfirm.classList.remove("loading");
+    deleteTeamModalConfirm.disabled = false;
+  }
+});
+
+/* ===========================================================
+   MANUAL TRANSFER BANK ACCOUNTS (up to 5, admin-only)
+   Reads/writes settings/manualTransferBanks { accounts: [...] }
+   as one array on one doc — cheap (one read), and 5 entries is
+   small enough that a full-array read-modify-write is simpler
+   and safer than a subcollection for something this size.
+   =========================================================== */
+const bankAccountList = document.getElementById("bankAccountList");
+const bankAccountEmpty = document.getElementById("bankAccountEmpty");
+const addBankAccountBtn = document.getElementById("addBankAccountBtn");
+const addBankForm = document.getElementById("addBankForm");
 const accountNumberInput = document.getElementById("accountNumberInput");
 const verifyAccountBtn = document.getElementById("verifyAccountBtn");
 const resolvedNameBox = document.getElementById("resolvedNameBox");
 const resolvedNameValue = document.getElementById("resolvedNameValue");
 const bankMsg = document.getElementById("bankMsg");
 const saveBankBtn = document.getElementById("saveBankBtn");
+const cancelBankBtn = document.getElementById("cancelBankBtn");
 
+let currentBankAccounts = [];
 let resolvedAccountName = null;
+
+function renderBankAccounts() {
+  if (!currentBankAccounts.length) {
+    bankAccountList.innerHTML = "";
+    bankAccountEmpty.style.display = "flex";
+  } else {
+    bankAccountEmpty.style.display = "none";
+    bankAccountList.innerHTML = currentBankAccounts.map((acc) => `
+      <div class="bank-account-card" data-id="${acc.id}">
+        <div class="bac-icon"><i class="bx bx-bank"></i></div>
+        <div class="bac-info">
+          <strong>${escapeHtml(acc.accountName)}</strong>
+          <span>${escapeHtml(acc.bankName)} · ${escapeHtml(acc.accountNumber)}</span>
+        </div>
+        <button type="button" class="team-icon-btn danger" data-act="delete-bank" aria-label="Remove"><i class="bx bx-trash"></i></button>
+      </div>`).join("");
+
+    bankAccountList.querySelectorAll('[data-act="delete-bank"]').forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.currentTarget.closest(".bank-account-card").dataset.id;
+        removeBankAccount(id);
+      });
+    });
+  }
+
+  addBankAccountBtn.style.display = currentBankAccounts.length >= MAX_BANK_ACCOUNTS ? "none" : "inline-flex";
+}
+
+async function loadBankAccounts() {
+  try {
+    const snap = await getDoc(doc(db, "settings", "manualTransferBanks"));
+    currentBankAccounts = snap.exists() ? (snap.data().accounts || []) : [];
+    renderBankAccounts();
+  } catch (err) {
+    console.error("Load bank accounts error:", err);
+  }
+}
+
+async function saveBankAccountsToFirestore() {
+  await setDoc(doc(db, "settings", "manualTransferBanks"), {
+    accounts: currentBankAccounts,
+    updatedAt: serverTimestamp(),
+    updatedBy: currentAdmin.uid
+  });
+}
+
+async function removeBankAccount(id) {
+  currentBankAccounts = currentBankAccounts.filter((a) => a.id !== id);
+  try {
+    await saveBankAccountsToFirestore();
+    renderBankAccounts();
+    showToast("Bank account removed.");
+  } catch (err) {
+    console.error("Remove bank account error:", err);
+    showToast("Couldn't remove that account. Please try again.", "error");
+    loadBankAccounts(); // resync in case the local array drifted from Firestore
+  }
+}
+
+function resetAccountResolution() {
+  resolvedAccountName = null;
+  resolvedNameBox.style.display = "none";
+  saveBankBtn.disabled = true;
+  bankMsg.style.display = "none";
+}
 
 function showBankMsg(text, type) {
   bankMsg.textContent = text;
   bankMsg.className = `mc-msg ${type}`;
   bankMsg.style.display = "block";
 }
-function clearBankMsg() {
-  bankMsg.style.display = "none";
-}
-function resetAccountResolution() {
-  resolvedAccountName = null;
-  resolvedNameBox.style.display = "none";
-  saveBankBtn.disabled = true;
-  clearBankMsg();
-}
+
+addBankAccountBtn.addEventListener("click", () => {
+  addBankForm.style.display = "block";
+  addBankAccountBtn.style.display = "none";
+  bankSelect.value = "";
+  accountNumberInput.value = "";
+  resetAccountResolution();
+});
+cancelBankBtn.addEventListener("click", () => {
+  addBankForm.style.display = "none";
+  addBankAccountBtn.style.display = currentBankAccounts.length >= MAX_BANK_ACCOUNTS ? "none" : "inline-flex";
+});
 
 bankSelect.addEventListener("change", resetAccountResolution);
 accountNumberInput.addEventListener("input", () => {
@@ -249,24 +585,8 @@ accountNumberInput.addEventListener("input", () => {
   resetAccountResolution();
 });
 
-async function loadCurrentBank() {
-  try {
-    const snap = await getDoc(doc(db, "settings", "manualTransferBank"));
-    const box = document.getElementById("currentBankValue");
-    if (snap.exists()) {
-      const d = snap.data();
-      box.textContent = `${d.accountName || "—"} · ${d.bankName || "—"} · ${d.accountNumber || "—"}`;
-    } else {
-      box.textContent = "Not set up yet — users can't use manual transfer until this is saved.";
-    }
-  } catch (err) {
-    console.error("Load manual transfer bank error:", err);
-    document.getElementById("currentBankValue").textContent = "Couldn't load current details.";
-  }
-}
-
 verifyAccountBtn.addEventListener("click", async () => {
-  clearBankMsg();
+  bankMsg.style.display = "none";
   const bankCode = bankSelect.value;
   const accountNumber = accountNumberInput.value;
 
@@ -277,15 +597,9 @@ verifyAccountBtn.addEventListener("click", async () => {
   verifyAccountBtn.disabled = true;
   try {
     const idToken = await currentAdmin.getIdToken();
-    const res = await fetch(CLOUD_FN.resolveAccount, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
-      body: JSON.stringify({ bank_code: bankCode, account_number: accountNumber })
-    });
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Could not resolve account.");
+    const result = await callEdgeFunction(EDGE_FN.resolveAccount, { bank_code: bankCode, account_number: accountNumber }, idToken);
 
-    resolvedAccountName = result.account_name || null;
+    resolvedAccountName = result?.account_name || null;
     if (resolvedAccountName) {
       resolvedNameValue.textContent = resolvedAccountName;
       resolvedNameBox.style.display = "flex";
@@ -304,29 +618,37 @@ verifyAccountBtn.addEventListener("click", async () => {
 
 saveBankBtn.addEventListener("click", async () => {
   if (!resolvedAccountName) return;
+  if (currentBankAccounts.length >= MAX_BANK_ACCOUNTS) {
+    showBankMsg(`Maximum of ${MAX_BANK_ACCOUNTS} accounts reached — remove one first.`, "error");
+    return;
+  }
+
   const bankCode = bankSelect.value;
   const bankName = bankSelect.options[bankSelect.selectedIndex].textContent;
+  const newAccount = {
+    id: `${bankCode}-${accountNumberInput.value}-${Date.now()}`,
+    bankName,
+    bankCode,
+    accountNumber: accountNumberInput.value,
+    accountName: resolvedAccountName
+  };
 
   saveBankBtn.classList.add("loading");
   saveBankBtn.disabled = true;
   try {
-    await setDoc(doc(db, "settings", "manualTransferBank"), {
-      bankName,
-      bankCode,
-      accountNumber: accountNumberInput.value,
-      accountName: resolvedAccountName,
-      updatedAt: serverTimestamp(),
-      updatedBy: currentAdmin.uid
-    });
+    currentBankAccounts = [...currentBankAccounts, newAccount];
+    await saveBankAccountsToFirestore();
 
-    showToast("Manual transfer bank details saved — live for all users now.");
-    await loadCurrentBank();
+    showToast("Bank account added — live for all users now.");
+    renderBankAccounts();
+    addBankForm.style.display = "none";
     bankSelect.value = "";
     accountNumberInput.value = "";
     resetAccountResolution();
   } catch (err) {
-    console.error("Save bank details error:", err);
-    showToast(err.message || "Couldn't save bank details. Please try again.", "error");
+    console.error("Save bank account error:", err);
+    showToast(err.message || "Couldn't save this account. Please try again.", "error");
+    currentBankAccounts = currentBankAccounts.filter((a) => a.id !== newAccount.id);
   } finally {
     saveBankBtn.classList.remove("loading");
     saveBankBtn.disabled = false;
@@ -334,7 +656,7 @@ saveBankBtn.addEventListener("click", async () => {
 });
 
 /* ===========================================================
-   MAINTENANCE — LOGIN LOCK
+   MAINTENANCE — LOGIN LOCK (admin-only)
    Reads/writes settings/systemLock { locked, message, updatedAt,
    updatedBy }. Toggling the switch only changes local UI state;
    nothing is written until "Save Lock Settings" is clicked.
@@ -392,7 +714,7 @@ saveLockBtn.addEventListener("click", async () => {
 });
 
 /* ===========================================================
-   FORCE LOGOUT EVERYONE
+   FORCE LOGOUT EVERYONE (admin-only)
    =========================================================== */
 const forceLogoutToggleBtn = document.getElementById("forceLogoutToggleBtn");
 const forceLogoutPanel = document.getElementById("forceLogoutPanel");
@@ -414,12 +736,7 @@ forceLogoutConfirmBtn.addEventListener("click", async () => {
   forceLogoutConfirmBtn.disabled = true;
   try {
     const idToken = await currentAdmin.getIdToken();
-    const res = await fetch(CLOUD_FN.forceLogoutAll, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken }
-    });
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Couldn't force logout everyone.");
+    await callEdgeFunction(EDGE_FN.forceLogoutAll, {}, idToken);
 
     await setDoc(doc(db, "settings", "systemLock"), {
       forceLogoutAt: serverTimestamp(),
@@ -438,12 +755,40 @@ forceLogoutConfirmBtn.addEventListener("click", async () => {
   }
 });
 
+/* ===========================================================
+   SUPPORT VIEW — "My Details" (read-only)
+   =========================================================== */
+const myFullName = document.getElementById("myFullName");
+const myUsername = document.getElementById("myUsername");
+const myEmail = document.getElementById("myEmail");
+const myPassword = document.getElementById("myPassword");
+const myPasswordToggle = document.getElementById("myPasswordToggle");
+
+let myPasswordVisible = false;
+myPasswordToggle?.addEventListener("click", () => {
+  myPasswordVisible = !myPasswordVisible;
+  myPassword.textContent = myPasswordVisible ? (currentStaffDoc?.password || "—") : "••••••••";
+  myPasswordToggle.innerHTML = myPasswordVisible ? '<i class="bx bx-show"></i>' : '<i class="bx bx-hide"></i>';
+});
+
+function renderMyDetails() {
+  if (!currentStaffDoc) return;
+  myFullName.textContent = currentStaffDoc.fullName || "—";
+  myUsername.textContent = "@" + (currentStaffDoc.username || "—");
+  myEmail.textContent = currentStaffDoc.email || "—";
+  myPassword.textContent = "••••••••";
+  myPasswordVisible = false;
+}
+
 /* ---------------------------------------------------------
-   AUTH GUARD
+   AUTH GUARD — role check against staffAccounts/{uid}
    --------------------------------------------------------- */
 const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
 const userAvatarEl = document.getElementById("menuUserAvatar");
+const pageSubtitle = document.getElementById("pageSubtitle");
+const supportOnlySection = document.getElementById("supportOnlySection");
+const adminOnlySection = document.getElementById("adminOnlySection");
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
@@ -453,59 +798,119 @@ onAuthStateChanged(auth, async (user) => {
   currentAdmin = user;
 
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const data = snap.exists() ? snap.data() : {};
-    const fullName = data.fullName || "Admin";
+    const snap = await getDoc(doc(db, "staffAccounts", user.uid));
+    if (!snap.exists()) {
+      // Not a recognized staff account at all — bounce back to login,
+      // same guard login.html itself already enforces.
+      await signOut(auth);
+      window.location.href = "login.html";
+      return;
+    }
+    currentStaffDoc = snap.data();
+
+    const fullName = currentStaffDoc.fullName || "Admin";
     const initial = fullName.trim().charAt(0).toUpperCase() || "A";
     if (userNameEl) userNameEl.textContent = fullName;
-    if (userTypeEl) userTypeEl.textContent = "Admin";
+    if (userTypeEl) userTypeEl.textContent = currentStaffDoc.role === "admin" ? "Admin" : "Support";
     if (userAvatarEl) userAvatarEl.textContent = initial;
-  } catch (err) {
-    console.error("Load admin profile error:", err);
-  }
 
-  loadCurrentBank();
-  loadLockSettings();
+    if (currentStaffDoc.role === "admin") {
+      pageSubtitle.textContent = "Platform-wide configuration for TaskNOVA.";
+      adminOnlySection.style.display = "block";
+      supportOnlySection.style.display = "none";
+      subscribeTeam();
+      loadBankAccounts();
+      loadLockSettings();
+    } else {
+      pageSubtitle.textContent = "Your account details.";
+      adminOnlySection.style.display = "none";
+      supportOnlySection.style.display = "block";
+      renderMyDetails();
+    }
+  } catch (err) {
+    console.error("Load staff profile error:", err);
+  }
 });
 
 /* ===========================================================
    NOTES
    ===========================================================
-   - Admin identity read (users/{uid}) mirrors the same assumption
-     flagged on every other admin page.
+   - Admin identity now reads staffAccounts/{uid} — this is the
+     new source of truth for every admin page's own name/avatar/
+     role, replacing the old users/{uid} read every other admin
+     page still carries as a flagged assumption. Apply the same
+     swap to dashboard.html/users.html/tasks.html/etc. whenever
+     each is next touched — none of them have been updated yet.
 
-   - Manual Transfer Bank Details reuses wallet.js's exact
-     NIGERIAN_BANKS list, CLOUD_FN.resolveAccount endpoint, and
-     verify-then-save flow, writing to settings/manualTransferBank
-     — the precise doc wallet.js's deposit page already listens to
-     live via onSnapshot. Saving here takes effect for every user
-     immediately, with no deploy needed.
+   - THREE new Supabase Edge Functions needed, none deployed yet.
+     All three must verify the caller (Firebase ID token in the
+     Authorization header) is themselves an existing admin
+     (staffAccounts/{callerUid}.role === "admin") before doing
+     anything — support accounts must never be able to call these,
+     even by guessing the function URL directly, since the UI
+     hiding these sections is not a real security boundary on its
+     own.
 
-   - Lock Logins writes settings/systemLock { locked, message }.
-     This page only stores the flag — nothing currently reads it.
-     For this to actually block sign-ins, the login page (not
-     shown to me — described as "already built") needs to check
-     this doc before completing authentication and show `message`
-     if locked. Until that check is added, toggling this switch
-     changes nothing for users.
+     create-staff-account({ fullName, username, email, password, role })
+       - Create the Firebase Auth user via Admin SDK
+         (admin.auth().createUser({ email, password })) — doing
+         this from the client instead would hijack the calling
+         admin's own session, since the client SDK signs in as
+         whatever user it just created.
+       - Write staffAccounts/{newUid} = { fullName, username,
+         email, password, role, createdAt, createdBy: callerUid }.
 
-   - Force Logout Everyone calls a placeholder Cloud Function
-     (CLOUD_FN.forceLogoutAll) that does not exist yet. It would
-     need to iterate every Firebase Auth user and call
-     admin.auth().revokeRefreshTokens(uid) (or similar) so their
-     existing ID tokens stop working. That alone isn't enough,
-     though: Firebase only rejects a revoked token when something
-     actually re-checks it against the Auth backend (e.g. a
-     server-side verifyIdToken call), and this whole app is
-     client-only Firestore reads/writes with the SDK caching
-     sign-in state locally — so a signed-in tab can keep working
-     until it naturally refreshes its token. This action also
-     stamps settings/systemLock.forceLogoutAt, which is the hook
-     every page's shared auth-guard chrome would need to check
-     against the user's local sign-in time (log them out client-
-     side if forceLogoutAt is newer) for a real, immediate kick —
-     that check doesn't exist on any page yet, admin or user-side.
-     Treat this button as the admin-facing half of a feature whose
-     other half (the Cloud Function + the per-page check) still
-     needs building.
+     update-staff-account({ uid, fullName?, username?, email?,
+                             password?, role? })
+       - For any of email/password: admin.auth().updateUser(uid,
+         {...}) — the client SDK can't change another user's auth
+         credentials, only Admin SDK can.
+       - Merge the same fields into staffAccounts/{uid}.
+
+     delete-staff-account({ uid })
+       - Reject if uid === callerUid (self-delete blocked) — this
+         is the REAL enforcement; the disabled button client-side
+         is just a courtesy, not the security boundary.
+       - admin.auth().deleteUser(uid), then delete
+         staffAccounts/{uid}.
+
+   - SECURITY TRADE-OFF, flagged explicitly rather than silently
+     implemented: staffAccounts/{uid}.password stores the account's
+     password in plain, readable text, specifically so support
+     members can view their own password on this page if they
+     forget it. This is a real risk — anyone who gains read access
+     to that field (a misconfigured rule, a compromised admin
+     session, a leaked Firestore export) gets a live plaintext
+     password list for every staff account, and if any staff member
+     reuses that password elsewhere, that account is exposed too.
+     The safer alternative, if wanted instead: never store the
+     password at all, show it once at creation time only (admin
+     copies it down to share with the new hire), and if it's
+     forgotten later, have the admin trigger a password reset
+     rather than a lookup. Implemented as explicitly requested for
+     now — swap it for the safer flow if this risk isn't acceptable
+     on reflection.
+
+   - Firestore Security Rules (not written/deployed anywhere yet,
+     same as every other privileged pattern in this project) need
+     to restrict staffAccounts reads: a support account should only
+     ever be able to read its OWN doc (staffAccounts/{request.auth.uid}),
+     never the full collection — the client code above already only
+     fetches their own doc for support, but that's enforced by this
+     page's code, not by a rule, so a support account with dev tools
+     open could otherwise query the whole collection today.
+
+   - Manual Transfer Bank Accounts moved from
+     settings/manualTransferBank (single account) to
+     settings/manualTransferBanks.accounts[] (up to 5). wallet.js
+     currently reads the OLD single-doc path — it needs updating to
+     read the new array and pick/rotate among the available accounts
+     whenever it's next touched, or manual-transfer deposits will
+     silently stop showing any account at all.
+
+   - resolveBankAccount and forceLogoutAll both moved from the old
+     raw-fetch Cloud Function pattern to Supabase Edge Functions via
+     callEdgeFunction, matching the rest of this rework — see
+     wallet.js's own BACKEND NOTES for resolveBankAccount's exact
+     Flutterwave-side spec (unchanged, just a different transport).
    =========================================================== */
