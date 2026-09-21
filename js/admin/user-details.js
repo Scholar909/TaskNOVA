@@ -1,6 +1,15 @@
 /* =========================================================
    TASKNOVA ADMIN — USER DETAILS PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Auth guard now reads staffAccounts/{uid}.role (admin or
+      support) instead of the old users/{uid}.isAdmin flag.
+   2. Support role can view everything here but gets no Edit,
+      Block/Unblock, Delete, or Wallet Edits buttons — read only.
+   3. delete-platform-user migrated from a raw Cloud Function
+      fetch to a Supabase Edge Function via callEdgeFunction,
+      matching users.js and the rest of this rework.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -17,6 +26,7 @@ import {
   updateDoc,
   deleteField
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { callEdgeFunction } from "../supabase.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -31,8 +41,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const ADMIN_FN = {
-  deleteUser: "https://REGION-PROJECT.cloudfunctions.net/adminDeleteUser"
+const EDGE_FN = {
+  deleteUser: "delete-platform-user"
 };
 
 /* ---------------------------------------------------------
@@ -174,30 +184,56 @@ if (!targetUid) {
 }
 
 /* ===========================================================
-   AUTH GUARD — admin only. Same assumption as dashboard.js /
-   users.js: users/{uid}.isAdmin === true.
+   AUTH GUARD — role check against staffAccounts/{uid}, same
+   pattern as settings.js/dashboard.js/users.js. Support can view
+   this whole page but gets no action buttons — see
+   applyRolePermissions() below.
    =========================================================== */
 const menuUserName = document.getElementById("menuUserName");
 const menuUserAvatar = document.getElementById("menuUserAvatar");
+
+let currentStaffRole = null;
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "login.html"; return; }
 
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const data = snap.exists() ? snap.data() : {};
-    if (!data.isAdmin) { window.location.href = "login.html"; return; }
+    const snap = await getDoc(doc(db, "staffAccounts", user.uid));
+    if (!snap.exists()) { await signOut(auth); window.location.href = "login.html"; return; }
+    const data = snap.data();
 
+    currentStaffRole = data.role;
     const fullName = data.fullName || "Admin";
     if (menuUserName) menuUserName.textContent = fullName;
     if (menuUserAvatar) menuUserAvatar.textContent = fullName.trim().charAt(0).toUpperCase() || "A";
 
+    applyRolePermissions();
     listenTargetUser();
   } catch (err) {
     console.error("Admin auth check failed:", err);
     window.location.href = "login.html";
   }
 });
+
+/* ---------------------------------------------------------
+   ROLE PERMISSIONS — support can view every detail on this page
+   but never edit: no Edit, Block/Unblock, Delete, or Wallet
+   Edits. Buttons are hidden entirely rather than just disabled,
+   matching the "view only" treatment on users.js.
+   --------------------------------------------------------- */
+function applyRolePermissions() {
+  if (currentStaffRole === "admin") return;
+
+  [editToggleBtn, blockToggleBtn, deleteBtn, document.getElementById("walletEditsBtn")].forEach((btn) => {
+    if (btn) btn.style.display = "none";
+  });
+
+  const viewOnlyTag = document.createElement("span");
+  viewOnlyTag.className = "view-only-tag";
+  viewOnlyTag.style.cssText = "display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line);color:var(--text-soft);font-size:.76rem;font-weight:600;";
+  viewOnlyTag.innerHTML = `<i class="bx bx-show"></i> View only`;
+  editToggleBtn?.parentElement?.appendChild(viewOnlyTag);
+}
 
 /* ===========================================================
    PROFILE — live view of the target user's doc
@@ -335,6 +371,7 @@ const editFormMsg = document.getElementById("editFormMsg");
 const editableFields = [editFullName, editAccountType, editInstitution, editInstitutionAbbr];
 
 function enterEditMode() {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   isEditing = true;
   editableFields.forEach((f) => { f.disabled = false; });
   viewActions.style.display = "none";
@@ -403,6 +440,7 @@ editSaveBtn.addEventListener("click", async () => {
    BLOCK / UNBLOCK — direct Firestore write, same as users.js.
    --------------------------------------------------------- */
 blockToggleBtn.addEventListener("click", async () => {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   if (!currentUserData) return;
   const nextBlocked = !currentUserData.blocked;
 
@@ -422,6 +460,7 @@ blockToggleBtn.addEventListener("click", async () => {
    Changes, with the username prefilled via query string.
    --------------------------------------------------------- */
 document.getElementById("walletEditsBtn").addEventListener("click", () => {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   if (!currentUserData?.username) return;
   window.location.href = `manual-transactions.html?tab=manual-changes&username=${encodeURIComponent(currentUserData.username)}`;
 });
@@ -440,6 +479,7 @@ const deleteModalCancel = document.getElementById("deleteModalCancel");
 const deleteModalConfirm = document.getElementById("deleteModalConfirm");
 
 function openDeleteModal() {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   if (!currentUserData?.username) return;
   deleteModalUsername.textContent = "@" + currentUserData.username;
   deleteConfirmTarget.textContent = currentUserData.username;
@@ -472,14 +512,8 @@ deleteModalConfirm.addEventListener("click", async () => {
 
   try {
     const idToken = await auth.currentUser.getIdToken();
-    const res = await fetch(ADMIN_FN.deleteUser, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
-      body: JSON.stringify({ uid: targetUid })
-    });
-
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Deletion failed.");
+    const result = await callEdgeFunction(EDGE_FN.deleteUser, { uid: targetUid }, idToken);
+    if (!result?.success) throw new Error(result?.error || "Deletion failed.");
 
     window.location.href = "users.html";
   } catch (err) {
@@ -497,34 +531,46 @@ deleteModalConfirm.addEventListener("click", async () => {
       users.js: admin-only, verified server-side, deletes the
       Auth account + Firestore doc + cascades related data.
 
-   2. lifetimeDeposited / lifetimeEarned — ASSUMPTION: these are
-      running-total counter fields on users/{uid}, separate from
-      the spendable wallet.deposit / wallet.earned balances (which
-      go down on withdrawal/spend). They should only ever be
-      incremented, never decremented, server-side: bump
-      lifetimeDeposited whenever a deposit is verified (Paystack
-      webhook, virtual-account webhook, or a manual deposit
-      approval), and bump lifetimeEarned whenever a task payout
-      lands in the user's earned wallet. If no such fields exist
-      yet, they show as ₦0.00 until added.
+   2. lifetimeDeposited / lifetimeEarned — running-total counter
+      fields on users/{uid}, separate from the spendable
+      wallet.deposit / wallet.earned balances (which go down on
+      withdrawal/spend). lifetimeDeposited is confirmed real and
+      load-bearing (refer.js's referral-reward feature depends on
+      it) — bumped by wallet.js's Flutterwave deposit-verification
+      Edge Function and by admin/manual-transactions.js's manual-
+      deposit approval. lifetimeEarned is still an ASSUMPTION: it
+      should bump whenever a task payout lands in the user's earned
+      wallet, but no page has been confirmed to actually do this yet.
 
    3. referralsTotal / referralsBonusTriggered — ASSUMPTION: also
-      running counters on users/{uid} (incremented by whatever
-      Cloud Function handles referral signups / bonus payouts),
-      rather than computed by scanning the users collection for
-      referredBy == uid on every page load.
+      running counters on users/{uid}. Note refer.js's own rework
+      no longer needs a Cloud Function or counter for the core
+      referral-reward feature (it queries the users collection
+      directly and stores a marker subcollection instead) — these
+      two fields, if shown here, would need to be kept in sync with
+      that same logic rather than a separate mechanism.
 
    4. Editing accountType from Student/Teacher to None clears
       institution + institutionAbbr (deleteField()) so stale data
-      doesn't linger. Switching back to Student/Teacher requires
-      re-entering an institution.
+      doesn't linger. This whole accountType/institution edit UI is
+      now dead weight — the site-wide removal means new users never
+      have these fields set at all — but wasn't removed this pass
+      since user-details.html's exact form markup wasn't provided;
+      worth deleting entirely (same cleanup profile.html already
+      got) next time that HTML is available.
 
    5. Wallet Edits hands off via
       manual-transactions.html?tab=manual-changes&username=…
-      — when that page is built, it should read both query params
-      on load: switch to the Manual Changes tab and auto-run the
-      username fetch.
+      — confirmed that page already reads both query params on load
+      and auto-runs the username fetch.
 
-   6. Admin auth guard assumes users/{uid}.isAdmin === true, same
-      unconfirmed assumption as dashboard.js and users.js.
+   6. Admin auth guard now reads staffAccounts/{uid}.role (either
+      "admin" or "support" passes) — resolves the old flagged
+      assumption about users/{uid}.isAdmin, which is no longer used
+      anywhere. Support can view this whole page but every action
+      button (Edit, Block/Unblock, Delete, Wallet Edits) is hidden
+      and additionally guarded by a role check in its own handler
+      as a safety net — the real enforcement still has to be a
+      Firestore Security Rule + the delete-platform-user Edge
+      Function's own server-side role check, same as users.js.
    =========================================================== */

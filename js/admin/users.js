@@ -1,6 +1,15 @@
 /* =========================================================
    TASKNOVA ADMIN — USER MANAGEMENT PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Auth guard now reads staffAccounts/{uid}.role (admin or
+      support) instead of the old users/{uid}.isAdmin flag.
+   2. Support role sees the same table but gets a "View only" tag
+      instead of Block/Delete buttons.
+   3. delete-platform-user migrated from a raw Cloud Function
+      fetch to a Supabase Edge Function via callEdgeFunction,
+      matching the rest of this rework.
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -21,6 +30,7 @@ import {
   startAfter,
   getDocs
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import { callEdgeFunction } from "../supabase.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -35,8 +45,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const ADMIN_FN = {
-  deleteUser: "https://REGION-PROJECT.cloudfunctions.net/adminDeleteUser"
+const EDGE_FN = {
+  deleteUser: "delete-platform-user"
 };
 
 /* ---------------------------------------------------------
@@ -150,30 +160,48 @@ function setBtnLoading(btn, loading) {
 }
 
 /* ===========================================================
-   AUTH GUARD — admin only.
-   ASSUMPTION: users/{uid}.isAdmin === true, same as dashboard.js.
+   AUTH GUARD — role check against staffAccounts/{uid}, same
+   pattern as settings.js/dashboard.js. Both admin and support
+   can view this page; support just doesn't get the action
+   buttons (see applyRolePermissions below and renderUsers()).
    =========================================================== */
 const menuUserName = document.getElementById("menuUserName");
+const menuUserType = document.getElementById("menuUserType");
 const menuUserAvatar = document.getElementById("menuUserAvatar");
+
+let currentStaffRole = null;
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) { window.location.href = "login.html"; return; }
 
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const data = snap.exists() ? snap.data() : {};
-    if (!data.isAdmin) { window.location.href = "login.html"; return; }
+    const snap = await getDoc(doc(db, "staffAccounts", user.uid));
+    if (!snap.exists()) { await signOut(auth); window.location.href = "login.html"; return; }
+    const data = snap.data();
 
+    currentStaffRole = data.role;
     const fullName = data.fullName || "Admin";
     if (menuUserName) menuUserName.textContent = fullName;
+    if (menuUserType) menuUserType.textContent = data.role === "admin" ? "Admin" : "Support";
     if (menuUserAvatar) menuUserAvatar.textContent = fullName.trim().charAt(0).toUpperCase() || "A";
 
+    applyRolePermissions();
     loadUsers();
   } catch (err) {
     console.error("Admin auth check failed:", err);
     window.location.href = "login.html";
   }
 });
+
+/* ---------------------------------------------------------
+   ROLE PERMISSIONS — support can view everything on this page
+   but never edit: no Block/Unblock, no Delete. Row click through
+   to User Details still works for both roles (that page applies
+   the same read-only restriction on its own actions).
+   --------------------------------------------------------- */
+function applyRolePermissions() {
+  document.body.classList.toggle("role-support", currentStaffRole !== "admin");
+}
 
 /* ===========================================================
    USER LIST — paginated load, client-side search/filter over
@@ -248,12 +276,14 @@ function renderUsers() {
           </span>
         </div>
         <div class="uc-actions">
+          ${currentStaffRole === "admin" ? `
           <button type="button" class="row-action-btn block-toggle-btn" data-uid="${u.uid}" data-blocked="${isBlocked}">
             <i class="bx ${isBlocked ? "bx-lock-open-alt" : "bx-lock-alt"}"></i> ${isBlocked ? "Unblock" : "Block"}
           </button>
           <button type="button" class="row-action-btn danger delete-btn" data-uid="${u.uid}" data-username="${escapeHtml(u.username || u.uid)}">
             <i class="bx bx-trash"></i> Delete
           </button>
+          ` : `<span class="view-only-tag" style="display:inline-flex;align-items:center;gap:5px;padding:8px 12px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line);color:var(--text-soft);font-size:.76rem;font-weight:600;"><i class="bx bx-show"></i> View only</span>`}
         </div>
       </div>
     `;
@@ -326,11 +356,12 @@ usersList.addEventListener("click", (e) => {
 
 /* ---------------------------------------------------------
    BLOCK / UNBLOCK — direct Firestore write. Doesn't move money,
-   so it's protected purely by Firestore rules requiring the
-   caller's own users/{uid}.isAdmin === true, same assumption as
-   the auth guard above.
+   so it's protected purely by a Firestore rule requiring the
+   caller's own staffAccounts/{uid}.role === "admin", same as the
+   auth guard above.
    --------------------------------------------------------- */
 async function toggleBlock(btn) {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   const uid = btn.dataset.uid;
   const isCurrentlyBlocked = btn.dataset.blocked === "true";
   const user = loadedUsers.find((u) => u.uid === uid);
@@ -366,6 +397,7 @@ let pendingDeleteUid = null;
 let pendingDeleteUsername = null;
 
 function openDeleteModal(uid, username) {
+  if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
   pendingDeleteUid = uid;
   pendingDeleteUsername = username;
   deleteModalUsername.textContent = "@" + username;
@@ -399,14 +431,8 @@ deleteModalConfirm.addEventListener("click", async () => {
 
   try {
     const idToken = await auth.currentUser.getIdToken();
-    const res = await fetch(ADMIN_FN.deleteUser, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
-      body: JSON.stringify({ uid: pendingDeleteUid })
-    });
-
-    const result = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(result.error || "Deletion failed.");
+    const result = await callEdgeFunction(EDGE_FN.deleteUser, { uid: pendingDeleteUid }, idToken);
+    if (!result?.success) throw new Error(result?.error || "Deletion failed.");
 
     loadedUsers = loadedUsers.filter((u) => u.uid !== pendingDeleteUid);
     renderUsers();
@@ -423,26 +449,28 @@ deleteModalConfirm.addEventListener("click", async () => {
 /* ===========================================================
    BACKEND NOTES (read before going live)
    ===========================================================
-   1. adminDeleteUser(uid) — Cloud Function, admin-only.
-      - Verify the caller's ID token AND that
-        users/{caller_uid}.isAdmin === true before doing anything.
+   1. delete-platform-user({ uid }) — Supabase Edge Function,
+      admin-only (migrated from a raw Cloud Function fetch to
+      match the rest of this rework's Supabase-based pattern).
+      - Verify the caller's Firebase ID token AND that
+        staffAccounts/{callerUid}.role === "admin" before doing
+        anything — this is the real enforcement; the client's
+        type-to-confirm modal and role-based button hiding are
+        both just UX, not security boundaries on their own.
       - Delete the Firebase Auth account (admin.auth().deleteUser),
         the users/{uid} Firestore doc, and cascade whatever else
         should not be orphaned (their tasks, ads, wallet doc,
         notifications) — decide per-collection whether "delete"
         or "anonymize" is more appropriate (e.g. a completed task
         another user paid for probably shouldn't just vanish).
-      - This is destructive and irreversible — the client already
-        gates it behind a type-to-confirm modal, but the function
-        itself should still double-check isAdmin server-side.
 
    2. Block/Unblock writes users/{uid}.blocked directly from the
-      client. Firestore rules must restrict this field's write
-      access to callers whose own users/{uid}.isAdmin === true.
-      Separately: every login/auth-guard flow across the *user*
-      side should check this field and refuse access (or show a
-      "blocked" message) — this page only flips the flag, it
-      doesn't enforce it anywhere else.
+      client. A Firestore rule must restrict this field's write
+      access to callers whose own staffAccounts/{uid}.role ===
+      "admin". Separately: every login/auth-guard flow on the
+      *user* side should check this field and refuse access (or
+      show a "blocked" message) — this page only flips the flag,
+      it doesn't enforce it anywhere else.
 
    3. Search/filter here only covers whatever's currently loaded
       (50 users per page, newest first, via "Load more"). That's
@@ -452,13 +480,26 @@ deleteModalConfirm.addEventListener("click", async () => {
            email_lower, fullName_lower) written at signup, enabling
            real prefix-range Firestore queries, or
         b) a dedicated search service (Algolia/Typesense) synced
-           from Firestore via a Cloud Function.
+           from Firestore via a scheduled Supabase function.
 
-   4. accountType is assumed to be exactly "Student" or "Teacher"
-      when set; anything else (including a missing field) is
-      treated as "None", matching the Dashboard's breakdown logic.
+   4. accountType (Student/Teacher/None column + filter) is dead —
+      it's no longer set anywhere since the site-wide accountType/
+      institution removal, so every user now shows "None" here
+      regardless. Not touched this pass since users.html's table
+      grid/column structure wasn't provided — worth removing the
+      column and its filter dropdown entirely next time that HTML
+      is available, same cleanup profile.html already got.
 
-   5. Admin auth guard assumes users/{uid}.isAdmin === true — same
-      assumption as dashboard.js. Still unconfirmed against the
-      actual admin login page; let me know if it differs.
+   5. Admin auth guard now reads staffAccounts/{uid}.role (either
+      "admin" or "support" passes) — resolves the old flagged
+      assumption about users/{uid}.isAdmin, which is no longer used
+      anywhere. Support sees the same table and can open User
+      Details, but gets a "View only" tag instead of Block/Delete
+      buttons — enforced here in the UI and with a role check inside
+      toggleBlock()/openDeleteModal() as a safety net, but the REAL
+      enforcement has to be a Firestore Security Rule restricting
+      writes to users/{uid}.blocked (and the delete function itself)
+      to callers whose own staffAccounts/{callerUid}.role === "admin"
+      — nothing stops a support account with dev tools open from
+      calling updateDoc directly today.
    =========================================================== */
