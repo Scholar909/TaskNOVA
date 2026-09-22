@@ -35,6 +35,7 @@ import {
   query,
   orderBy,
   limit,
+  getDocs,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { callEdgeFunction } from "../supabase.js";
@@ -1381,6 +1382,46 @@ withdrawForm.addEventListener("submit", async (e) => {
   setBtnLoading(withdrawSubmit, true);
 
   try {
+    // 1. Fetch today's existing withdrawals to check limits
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const txQuery = query(
+      collection(db, "users", currentUser.uid, "transactions"),
+      where("createdAt", ">=", startOfToday)
+    );
+    const snap = await getDocs(txQuery);
+
+    let todayCount = 0;
+    let todayTotal = 0;
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (data.type === "withdrawal" && data.status !== "failed" && data.status !== "rejected") {
+        todayCount++;
+        todayTotal += Number(data.amount) || 0;
+      }
+    });
+
+    // 2. Validate maximum withdrawal requests per day (Max 3)
+    if (todayCount >= 3) {
+      showPanelMsg(withdrawMsg, "error", "Maximum limit of 3 withdrawals per day reached. Please try again tomorrow.");
+      setBtnLoading(withdrawSubmit, false);
+      return;
+    }
+
+    // 3. Validate maximum total withdrawal amount per day (Max 15,000)
+    if (todayTotal + amount > 15000) {
+      showPanelMsg(
+        withdrawMsg,
+        "error",
+        `Daily withdrawal limit is ₦15,000 (Already withdrawn today: ${formatNaira(todayTotal)}). For higher amounts, please make a special request with support.`
+      );
+      setBtnLoading(withdrawSubmit, false);
+      return;
+    }
+
+    // 4. Submit withdrawal request if limits pass
     const idToken = await currentUser.getIdToken();
     await callEdgeFunction(EDGE_FN.requestWithdrawal, {
       amount,
@@ -1390,7 +1431,7 @@ withdrawForm.addEventListener("submit", async (e) => {
       account_name: resolvedAccountName
     }, idToken);
 
-    showPanelMsg(withdrawMsg, "success", "Withdrawal requested! You'll receive it within 24–48 hours (sooner once automatic transfers are enabled).");
+    showPanelMsg(withdrawMsg, "success", "Withdrawal requested! You'll receive it within 24–48 hours.");
     withdrawForm.reset();
     resetAccountResolution();
     updateWithdrawFeePreview();
