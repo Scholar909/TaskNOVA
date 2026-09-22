@@ -644,6 +644,61 @@ img { display: block; max-width: 100%; }
 .slc-body span { font-size: .78rem; color: var(--text-soft); }
 .slc-arrow { font-size: 1.3rem; color: var(--text-soft); flex-shrink: 0; }
 
+/* ---------- SUPPORT TICKETS ---------- */
+.support-section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 12px;
+}
+.support-section-head h2 { font-size: 1rem; font-weight: 700; }
+
+.ticket-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+@media (min-width: 640px) {
+  .ticket-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.ticket-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-soft);
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ticket-message {
+  font-size: .82rem;
+  color: var(--text);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 6.5em;
+  overflow-y: auto;
+}
+
+.ticket-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 700;
+  align-self: flex-start;
+}
+.ticket-status-badge.resolved { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.ticket-status-badge.unresolved { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
 /* ---------- TOAST ---------- */
 .toast {
   position: fixed;
