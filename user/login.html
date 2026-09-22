@@ -1093,16 +1093,22 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Check URL query parameters for maintenance flag on page load
-const urlParams = new URLSearchParams(window.location.search);
-if (urlParams.get("maintenance") === "true" || urlParams.get("reason") === "maintenance") {
-  const msg = urlParams.get("msg") || localStorage.getItem("tasknova_lock_message") || "TaskNOVA is currently undergoing maintenance. Please check back shortly.";
-  const loginMsgEl = document.getElementById("loginMsg");
-  if (loginMsgEl) {
-    loginMsgEl.className = "form-msg error show";
-    loginMsgEl.innerHTML = `<i class="bx bx-error-circle"></i> <span>${msg}</span>`;
-  }
-}
+    // Check URL query parameters for maintenance/blocked flags on page load
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("maintenance") === "true" || urlParams.get("reason") === "maintenance") {
+      const msg = urlParams.get("msg") || localStorage.getItem("tasknova_lock_message") || "TaskNOVA is currently undergoing maintenance. Please check back shortly.";
+      const loginMsgEl = document.getElementById("loginMsg");
+      if (loginMsgEl) {
+        loginMsgEl.className = "form-msg error show";
+        loginMsgEl.innerHTML = `<i class="bx bx-error-circle"></i> <span>${msg}</span>`;
+      }
+    } else if (urlParams.get("reason") === "blocked") {
+      const loginMsgEl = document.getElementById("loginMsg");
+      if (loginMsgEl) {
+        loginMsgEl.className = "form-msg error show";
+        loginMsgEl.innerHTML = `<i class="bx bx-error-circle"></i> <span>Your account has been suspended/blocked. Please contact support.</span>`;
+      }
+    }
 
 
     /* ---------------------------------------------------------
@@ -1572,7 +1578,18 @@ usernameInput.addEventListener("blur", () => {
           return;
         }
 
+        // Blocked user check
+        const userData = userSnap.data();
+        if (userData.blocked === true) {
+          await signOut(auth);
+          showMsg(loginMsg, "error", "Your account has been suspended/blocked. Please contact support.");
+          setLoading(loginSubmit, false);
+          syncHeight();
+          return;
+        }
+
         // System lock check
+
         const lockSnap = await getDoc(doc(db, "settings", "systemLock"));
         if (lockSnap.exists()) {
           const lockData = lockSnap.data();
