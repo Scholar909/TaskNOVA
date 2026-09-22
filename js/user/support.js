@@ -3,11 +3,12 @@
    Firebase v12.17.1 modular SDK
 
    Corrections applied this pass (see chat for full context):
-   1. Ticket submission switched from a Cloud Function
-      (submitSupportTicket) to sending directly via EmailJS —
-      the same public-key, no-backend-secret model already used on
-      request-task.js, just with its own separate template. The
-      old Cloud Function is no longer needed at all.
+   1. Ticket submission now writes a supportTickets/{id} doc in
+      Firestore FIRST (the real, persistent record admin's Reports
+      & Support page reads and ticks/crosses), then fires the
+      existing EmailJS send as a best-effort notification on top —
+      previously EmailJS was the only thing that happened, so
+      nothing was ever visible to admin.
    2. "Advertisement / Banner" and "Other" added to the ticket
       subject dropdown ("this is for incase Tawk.to live is
       offline, so it can be for anything at all") — added
@@ -36,9 +37,11 @@ import {
   doc,
   onSnapshot,
   collection,
+  addDoc,
   query,
   where,
-  limit
+  limit,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { initAuthGuard } from "./auth-guard.js";
 
@@ -428,10 +431,7 @@ ensureSubjectOption("other", "Other");
    same, only the template differs.
    --------------------------------------------------------- */
 const EMAILJS_SERVICE_ID = "service_9rc53vl";
-// TODO: fill in manually — this page's own template id (kept
-// separate from request-task.js's template_jdbogum).
 const EMAILJS_SUPPORT_TEMPLATE_ID = "template_jdbogum";
-// TODO: fill in manually — EmailJS dashboard -> Account -> API Keys.
 const EMAILJS_PUBLIC_KEY = "U1tt86J8H_-S_0QfH";
 
 (function loadEmailJs() {
@@ -474,13 +474,35 @@ ticketForm.addEventListener("submit", async (e) => {
   ticketSubmit.disabled = true;
 
   try {
-    await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SUPPORT_TEMPLATE_ID, {
-      requester_name: ticketNameInput.value,
-      requester_username: ticketUsernameInput.value,
-      requester_email: ticketEmailInput.value,
-      subject: subjectLabel,
-      message
-    }, { publicKey: EMAILJS_PUBLIC_KEY });
+    // The Firestore write is the real ticket record — admin's Reports &
+    // Support page reads supportTickets, not email. If this fails, stop
+    // here rather than firing an email for a ticket admin will never see
+    // listed anywhere.
+    await addDoc(collection(db, "supportTickets"), {
+      uid: currentUser.uid,
+      requesterName: ticketNameInput.value,
+      requesterUsername: ticketUsernameInput.value,
+      requesterEmail: ticketEmailInput.value,
+      subject,
+      subjectLabel,
+      message,
+      status: "open",
+      createdAt: serverTimestamp()
+    });
+
+    // Best-effort notification on top of the real record above — a
+    // failure here doesn't undo the ticket, just logs quietly.
+    try {
+      await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_SUPPORT_TEMPLATE_ID, {
+        requester_name: ticketNameInput.value,
+        requester_username: ticketUsernameInput.value,
+        requester_email: ticketEmailInput.value,
+        subject: subjectLabel,
+        message
+      }, { publicKey: EMAILJS_PUBLIC_KEY });
+    } catch (emailErr) {
+      console.error("EmailJS notification failed (ticket was still saved):", emailErr);
+    }
 
     showPanelMsg(ticketMsg, "success", "Ticket sent! We'll reply to " + ticketEmailInput.value + " as soon as possible.");
     ticketSubjectSelect.value = "";
@@ -561,32 +583,30 @@ onAuthStateChanged(auth, (user) => {
 /* ===========================================================
    NOTES
    ===========================================================
-   - Ticket sending no longer needs a Cloud Function. EmailJS
-     sends straight from the browser with a public key — the old
-     submitSupportTicket function (and its "verify the ID token,
-     hold the Tawk.to API key server-side" design) is gone entirely.
-     The Tawk.to ticket-email address itself
-     (tickets@tasknova-support.p.tawk.email) is assumed to be baked
-     into the EmailJS template's own "To" field, the same way
-     request-task.js's admin-alert template works — sending to that
-     address is what turns the email into a real Tawk.to ticket/
-     conversation, so agents can reply either by email or from the
-     Tawk.to dashboard and it threads as one conversation either way.
+   - Ticket sending no longer needs a Cloud Function. Firestore is
+     the real record now (supportTickets/{id}) — admin's Reports &
+     Support page reads that collection directly, ticks/crosses
+     update its status field. EmailJS on top is just a heads-up
+     notification, not the source of truth anymore.
 
    - EMAILJS_SUPPORT_TEMPLATE_ID and EMAILJS_PUBLIC_KEY are both
-     still placeholders — nothing will actually send until the real
-     values (a separate template from request-task.js's
-     template_jdbogum, plus the account's public key from EmailJS's
-     dashboard) are filled in above.
+     filled in with real values now (reusing request-task.js's
+     template_jdbogum, plus the account's public key) — confirm
+     that's intentional if a dedicated support-only template was
+     meant to be separate.
 
-   - Template param names (requester_name, requester_email, subject,
-     message) are this file's own reasonable guess — verify/rename
-     them to match whatever the actual support template expects,
-     same caveat as request-task.js.
+   - Template param names (requester_name, requester_username,
+     requester_email, subject, message) are this file's own
+     reasonable guess — verify/rename them to match whatever the
+     actual template expects, same caveat as request-task.js.
 
    - Tawk.to's own API key (0daf0077e92f316573933fa6635c42c977f4b81c)
      is never used in this file at all — it's only needed for
      Tawk.to's own widget script (loaded elsewhere in the page,
      outside this file's control) and for anything that calls
      Tawk.to's REST API directly, which nothing here does anymore.
+
+   - Tawk.to visitor auto-fill (name/username/email) is confirmed
+     already working correctly per the user, so nothing further
+     needed for that here beyond what's already wired.
    =========================================================== */
