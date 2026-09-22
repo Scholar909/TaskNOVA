@@ -1,6 +1,20 @@
 /* =========================================================
    TASKNOVA ADMIN — REPORTS & SUPPORT PAGE LOGIC
    Firebase v12.17.1 modular SDK
+
+   Corrections applied this pass (see chat for full context):
+   1. Skred removed entirely — the Support tab is now a single
+      Tawk.to app link (Tawk has no embeddable web response
+      interface, confirmed by the user) plus a real Support
+      Tickets list read from the new supportTickets collection
+      support.js now writes to.
+   2. NEW: ticket cards with tick (resolved) / cross (closed,
+      unresolved) actions and a "Respond on Email" mailto button —
+      previously nothing showed submitted tickets anywhere.
+   3. Auth guard now reads staffAccounts/{uid}.role — admin AND
+      support both get full access to everything on this page (no
+      view-only restriction here, unlike Users Management — this
+      page's whole purpose overlaps with support staff's actual job).
    ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
@@ -36,10 +50,6 @@ const firebaseConfig = {
   appId: "1:303980894317:web:7a4be9b7face44a22bc764"
 };
 
-// TODO: replace with the real Skred link for banner-ad inquiries
-// (mirrors the SKRED_ADVERTISE_LINK placeholder already used on the
-// user side in home.js / advertisements.js).
-
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -68,40 +78,6 @@ if (savedTheme === "dark" || savedTheme === "light") {
   setTheme(savedTheme, false);
 } else {
   setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light", false);
-}
-
-/* ---------------------------------------------------------
-   TAWK.TO DEVICE-SPECIFIC DESTINATION
-   --------------------------------------------------------- */
-
-const tawkDashboardLink = document.getElementById("tawkDashboardLink");
-
-if (tawkDashboardLink) {
-  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-
-  const androidLink =
-    "https://play.google.com/store/apps/details?id=to.tawk.android";
-
-  const iosLink =
-    "https://apps.apple.com/app/id985584499";
-
-  const desktopLink =
-    "https://dashboard.tawk.to/";
-
-  // Android
-  if (/android/i.test(userAgent)) {
-    tawkDashboardLink.href = androidLink;
-  }
-
-  // iPhone / iPad / iPod
-  else if (/iPad|iPhone|iPod/i.test(userAgent)) {
-    tawkDashboardLink.href = iosLink;
-  }
-
-  // Windows, Mac, Linux and other desktop devices
-  else {
-    tawkDashboardLink.href = desktopLink;
-  }
 }
 
 themeSwitch?.addEventListener("click", () => {
@@ -245,6 +221,10 @@ tabButtons.forEach((btn) => {
       loadedTabs.add("reports");
       loadReports(true);
     }
+    if (tab === "support" && !loadedTabs.has("support")) {
+      loadedTabs.add("support");
+      loadTickets(true);
+    }
   });
 });
 
@@ -287,7 +267,7 @@ async function loadReports(reset = false) {
 
     if (snap.empty && reportState.count === 0) {
       document.getElementById("emptyReports").style.display = "flex";
-      document.getElementById("metaReports").textContent = "No reports waiting for review.";
+      document.getElementById("metaReports").textContent = "No task reports waiting for review.";
       reportState.hasMore = false;
       loadMoreBtn.style.display = "none";
       return;
@@ -563,8 +543,150 @@ async function loadCounts() {
   }
 }
 
+/* ===========================================================
+   SUPPORT TICKETS
+   Reads supportTickets/{id}, written by the user-side support.js
+   ticket form. Every ticket shows regardless of status — tick/
+   cross don't remove the card, they replace its action buttons
+   with a status badge in place, per the spec ("both disappear and
+   leave behind the status").
+   =========================================================== */
+const listTickets = document.getElementById("listTickets");
+const emptyTickets = document.getElementById("emptyTickets");
+const metaTickets = document.getElementById("metaTickets");
+const loadMoreTicketsBtn = document.getElementById("loadMoreTickets");
+
+const ticketState = { lastDoc: null, hasMore: true, isLoading: false, count: 0 };
+
+async function loadTickets(reset = false) {
+  if (ticketState.isLoading) return;
+  if (reset) {
+    Object.assign(ticketState, { lastDoc: null, hasMore: true, isLoading: false, count: 0 });
+    listTickets.innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
+    emptyTickets.style.display = "none";
+  }
+  if (!ticketState.hasMore) return;
+
+  ticketState.isLoading = true;
+  loadMoreTicketsBtn.classList.add("loading");
+  loadMoreTicketsBtn.disabled = true;
+
+  try {
+    const constraints = [orderBy("createdAt", "desc")];
+    if (ticketState.lastDoc) constraints.push(startAfter(ticketState.lastDoc));
+    constraints.push(limit(PAGE_SIZE));
+
+    const snap = await getDocs(query(collection(db, "supportTickets"), ...constraints));
+    if (reset) listTickets.innerHTML = "";
+
+    if (snap.empty && ticketState.count === 0) {
+      emptyTickets.style.display = "flex";
+      metaTickets.textContent = "No support tickets yet.";
+      ticketState.hasMore = false;
+      loadMoreTicketsBtn.style.display = "none";
+      return;
+    }
+
+    snap.docs.forEach((d) => listTickets.appendChild(renderTicketCard(d.id, d.data())));
+
+    ticketState.count += snap.docs.length;
+    ticketState.lastDoc = snap.docs[snap.docs.length - 1] || ticketState.lastDoc;
+    ticketState.hasMore = snap.docs.length === PAGE_SIZE;
+    loadMoreTicketsBtn.style.display = ticketState.hasMore ? "inline-flex" : "none";
+    metaTickets.textContent = `${ticketState.count} ticket${ticketState.count === 1 ? "" : "s"} loaded`;
+  } catch (err) {
+    console.error("Load tickets error:", err);
+    showToast("Couldn't load support tickets.", "error");
+  } finally {
+    ticketState.isLoading = false;
+    loadMoreTicketsBtn.classList.remove("loading");
+    loadMoreTicketsBtn.disabled = false;
+  }
+}
+loadMoreTicketsBtn.addEventListener("click", () => loadTickets(false));
+
+const TICKET_STATUS_META = {
+  open: null, // no badge — action buttons show instead
+  resolved: { icon: "bx-check-circle", label: "Resolved", cls: "resolved" },
+  closed_unresolved: { icon: "bx-x-circle", label: "Closed (unresolved)", cls: "unresolved" }
+};
+
+function renderTicketCard(ticketId, ticket) {
+  const card = document.createElement("div");
+  card.className = "ticket-card";
+  card.dataset.id = ticketId;
+
+  const statusMeta = TICKET_STATUS_META[ticket.status] || null;
+
+  card.innerHTML = `
+    <div class="tc-head">
+      <div class="tc-title-wrap">
+        <div class="tc-title">${escapeHtml(ticket.subjectLabel || ticket.subject || "Support ticket")}</div>
+        <div class="tc-sub">${escapeHtml(ticket.requesterName || "—")} · @${escapeHtml(ticket.requesterUsername || "—")} · ${escapeHtml(ticket.requesterEmail || "—")}</div>
+      </div>
+    </div>
+    <p class="ticket-message">${escapeHtml(ticket.message || "")}</p>
+    <div class="tc-date">${formatDate(ticket.createdAt)}</div>
+    <div class="ticket-action-slot"></div>
+  `;
+
+  const actionSlot = card.querySelector(".ticket-action-slot");
+  const mailtoHref = `mailto:${encodeURIComponent(ticket.requesterEmail || "")}?subject=${encodeURIComponent("Re: " + (ticket.subjectLabel || ticket.subject || "Your TaskNOVA support ticket"))}`;
+
+  if (statusMeta) {
+    actionSlot.innerHTML = `<span class="ticket-status-badge ${statusMeta.cls}"><i class="bx ${statusMeta.icon}"></i> ${statusMeta.label}</span>`;
+  } else {
+    actionSlot.innerHTML = `
+      <div class="tc-actions">
+        <a class="btn btn-ghost" href="${mailtoHref}"><i class="bx bx-envelope"></i><span class="btn-label">Respond on Email</span></a>
+        <button type="button" class="btn btn-success" data-act="tick"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Dealt With</span></button>
+        <button type="button" class="btn btn-danger" data-act="cross"><span class="btn-spinner"></span><i class="bx bx-x"></i><span class="btn-label">Not Dealt With</span></button>
+      </div>
+    `;
+    actionSlot.querySelector('[data-act="tick"]').addEventListener("click", (e) => resolveTicket(ticketId, "resolved", card, e.currentTarget));
+    actionSlot.querySelector('[data-act="cross"]').addEventListener("click", (e) => resolveTicket(ticketId, "closed_unresolved", card, e.currentTarget));
+  }
+
+  return card;
+}
+
+async function resolveTicket(ticketId, status, cardEl, btnEl) {
+  btnEl.classList.add("loading");
+  cardEl.querySelectorAll(".tc-actions button").forEach((b) => (b.disabled = true));
+  try {
+    await updateDoc(doc(db, "supportTickets", ticketId), {
+      status,
+      resolvedAt: serverTimestamp()
+    });
+
+    const statusMeta = TICKET_STATUS_META[status];
+    cardEl.querySelector(".ticket-action-slot").innerHTML =
+      `<span class="ticket-status-badge ${statusMeta.cls}"><i class="bx ${statusMeta.icon}"></i> ${statusMeta.label}</span>`;
+    showToast(status === "resolved" ? "Marked as dealt with." : "Marked as closed, unresolved.");
+    bumpCount("countTickets", -1);
+  } catch (err) {
+    console.error("Resolve ticket error:", err);
+    showToast("Couldn't update this ticket. Please try again.", "error");
+    cardEl.querySelectorAll(".tc-actions button").forEach((b) => (b.disabled = false));
+  } finally {
+    btnEl.classList.remove("loading");
+  }
+}
+
+async function loadTicketCount() {
+  try {
+    const snap = await getCountFromServer(query(collection(db, "supportTickets"), where("status", "==", "open")));
+    document.getElementById("countTickets").textContent = snap.data().count;
+  } catch (err) {
+    console.error("Load ticket count error:", err);
+  }
+}
+
 /* ---------------------------------------------------------
-   AUTH GUARD
+   AUTH GUARD — staffAccounts/{uid}.role, either role gets full
+   access to this whole page (Reports tab included) — support
+   staff's actual job overlaps directly with what's here, unlike
+   Users Management which restricts support to view-only.
    --------------------------------------------------------- */
 const userNameEl = document.getElementById("menuUserName");
 const userTypeEl = document.getElementById("menuUserType");
@@ -577,27 +699,33 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   try {
-    const snap = await getDoc(doc(db, "users", user.uid));
-    const data = snap.exists() ? snap.data() : {};
+    const snap = await getDoc(doc(db, "staffAccounts", user.uid));
+    if (!snap.exists()) { await signOut(auth); window.location.href = "login.html"; return; }
+    const data = snap.data();
+
     const fullName = data.fullName || "Admin";
     const initial = fullName.trim().charAt(0).toUpperCase() || "A";
     if (userNameEl) userNameEl.textContent = fullName;
-    if (userTypeEl) userTypeEl.textContent = "Admin";
+    if (userTypeEl) userTypeEl.textContent = data.role === "admin" ? "Admin" : "Support";
     if (userAvatarEl) userAvatarEl.textContent = initial;
   } catch (err) {
     console.error("Load admin profile error:", err);
+    window.location.href = "login.html";
+    return;
   }
 
   loadCounts();
+  loadTicketCount();
   loadedTabs.add("reports");
   loadReports(true);
 });
 
+
 /* ===========================================================
    NOTES
    ===========================================================
-   - Admin identity read (users/{uid}) mirrors the same assumption
-     flagged on every other admin page.
+   - Admin identity now reads staffAccounts/{uid} — see the auth
+     guard note further down for the full role-access explanation.
 
    - Reports reads across every task's "submissions" subcollection
      via a collectionGroup query (reported==true, reportStatus==
@@ -636,11 +764,107 @@ onAuthStateChanged(auth, async (user) => {
      the spec's "must be filled before the Decline button
      activates."
 
-   - Support tab is intentionally static — no custom ticket
-     database, just two outbound links (Tawk.to's own dashboard,
-     and Skred for banner-ad inquiries specifically) since offline
-     tickets are handled entirely by Tawk.to itself (support.js's
-     existing SUBMIT_TICKET_ENDPOINT / tickets@tasknova-support.
-     p.tawk.email flow on the user side). SKRED_LINK at the top of
-     this file is a placeholder — swap in the real Skred URL.
+   - Support tab now reads a real supportTickets collection
+     (written by the user-side support.js ticket form) instead of
+     being static. Ticks/crosses set status to "resolved" or
+     "closed_unresolved" — the card stays visible either way (per
+     spec), just swapping its action buttons for a status badge.
+     "Respond on Email" is a plain mailto: link pre-filled with the
+     requester's address and a "Re: <subject>" line — no actual
+     email is sent from this page; the real conversation happens in
+     whatever mail client that opens, matching the spec's "full
+     interactions will be done on email."
+
+   - Skred is gone entirely, not just relinked — the Support tab is
+     now a single "Open Tawk.to App" link, since Tawk.to has no
+     embeddable agent-response interface for the web (confirmed by
+     the user after trying).
+
+   - Auth guard now reads staffAccounts/{uid}.role — resolves the
+     old flagged assumption about users/{uid}.isAdmin. Unlike
+     Users Management, BOTH roles get full access to every action
+     on this entire page (Force Pay/Decline Report included, not
+     just tickets) — support staff's job is exactly this page, so
+     no view-only restriction was applied anywhere here. Flag if
+     Force Pay specifically should actually be admin-only after
+     all, since it does move money — this page currently treats it
+     the same as ticket-handling.
    =========================================================== */
+
+/* ---------------------------------------------------------
+   TAWK.TO DEVICE-SPECIFIC APP / STORE / DASHBOARD
+   --------------------------------------------------------- */
+
+const tawkDashboardLink = document.getElementById("tawkDashboardLink");
+
+if (tawkDashboardLink) {
+
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+
+  const androidStore =
+    "https://play.google.com/store/apps/details?id=to.tawk.android";
+
+  const iosStore =
+    "https://apps.apple.com/app/id985584499";
+
+  const desktopDashboard =
+    "https://dashboard.tawk.to/";
+
+  /*
+     Tawk.to mobile app deep link.
+
+     If the app is installed, the browser attempts
+     to open it.
+
+     If it isn't installed, we fall back to the
+     appropriate app store.
+  */
+  const tawkAppLink = "tawkto://";
+
+  tawkDashboardLink.addEventListener("click", function (event) {
+
+    // Desktop → normal Tawk.to dashboard
+    if (!/android|iPhone|iPad|iPod/i.test(userAgent)) {
+      event.preventDefault();
+
+      window.open(
+        desktopDashboard,
+        "_blank",
+        "noopener,noreferrer"
+      );
+
+      return;
+    }
+
+    // Mobile → prevent the normal dashboard link
+    event.preventDefault();
+
+    let storeUrl;
+
+    // Android
+    if (/android/i.test(userAgent)) {
+      storeUrl = androidStore;
+    }
+
+    // iPhone / iPad / iPod
+    else {
+      storeUrl = iosStore;
+    }
+
+    /*
+       Try opening the Tawk.to app.
+    */
+    window.location.href = tawkAppLink;
+
+    /*
+       If the app did not open, redirect to the appropriate store.
+    */
+    setTimeout(() => {
+
+      if (document.visibilityState === "visible") {
+        window.location.href = storeUrl;
+      }
+
+    }, 1500);
+  });
+}
