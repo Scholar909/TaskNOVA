@@ -22,9 +22,12 @@ import {
   getFirestore,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   updateDoc,
-  deleteField
+  collection,
+  query,
+  where
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 import { callEdgeFunction } from "../supabase.js";
 
@@ -249,10 +252,7 @@ const roJoined = document.getElementById("roJoined");
 const roAge = document.getElementById("roAge");
 
 const editFullName = document.getElementById("editFullName");
-const editAccountType = document.getElementById("editAccountType");
-const editInstitutionWrap = document.getElementById("editInstitutionWrap");
-const editInstitution = document.getElementById("editInstitution");
-const editInstitutionAbbr = document.getElementById("editInstitutionAbbr");
+let referralStatsUsername = null;
 
 const lifetimeDeposited = document.getElementById("lifetimeDeposited");
 const lifetimeEarned = document.getElementById("lifetimeEarned");
@@ -268,13 +268,6 @@ const blockToggleBtn = document.getElementById("blockToggleBtn");
 
 let currentUserData = null;
 let isEditing = false;
-
-function updateInstitutionVisibility() {
-  const needsInstitution = editAccountType.value === "Student" || editAccountType.value === "Teacher";
-  editInstitutionWrap.style.display = needsInstitution ? "grid" : "none";
-}
-
-editAccountType.addEventListener("change", updateInstitutionVisibility);
 
 function renderUser(data) {
   currentUserData = data;
@@ -300,10 +293,6 @@ function renderUser(data) {
   // Never clobber fields the admin is actively editing.
   if (!isEditing) {
     editFullName.value = fullName;
-    editAccountType.value = (data.accountType === "Student" || data.accountType === "Teacher") ? data.accountType : "None";
-    editInstitution.value = data.institution || "";
-    editInstitutionAbbr.value = data.institutionAbbr || "";
-    updateInstitutionVisibility();
   }
 
   lifetimeDeposited.classList.remove("skeleton");
@@ -334,12 +323,41 @@ function renderUser(data) {
     declinesNote.textContent = "Within normal range.";
   }
 
-  referralTotal.classList.remove("skeleton");
-  referralTotal.textContent = (data.referralsTotal ?? 0).toLocaleString("en-NG");
-  referralBonus.classList.remove("skeleton");
-  referralBonus.textContent = (data.referralsBonusTriggered ?? 0).toLocaleString("en-NG");
-
+  if (data.username && data.username !== referralStatsUsername) {
+    referralStatsUsername = data.username;
+    loadReferralStats(data.username, targetUid);
+  }
   blockToggleBtn.innerHTML = `<i class="bx ${isBlocked ? "bx-lock-open-alt" : "bx-lock-alt"}"></i> ${isBlocked ? "Unblock" : "Block"}`;
+}
+
+/* ---------------------------------------------------------
+   REFERRAL STATS — matches refer.js's actual model: total
+   referred = users where referralCodeUsed == this user's
+   username; triggered reward amount = ₦100 × docs in
+   users/{uid}/referralRewards. (referralsTotal /
+   referralsBonusTriggered fields don't exist on the user doc.)
+   --------------------------------------------------------- */
+async function loadReferralStats(username, uid) {
+  referralTotal.classList.add("skeleton");
+  referralBonus.classList.add("skeleton");
+  try {
+    const [referredSnap, rewardsSnap] = await Promise.all([
+      getDocs(query(collection(db, "users"), where("referralCodeUsed", "==", username))),
+      getDocs(collection(db, "users", uid, "referralRewards"))
+    ]);
+
+    referralTotal.textContent = referredSnap.size.toLocaleString("en-NG");
+    referralTotal.classList.remove("skeleton");
+
+    referralBonus.textContent = formatNaira(rewardsSnap.size * 100);
+    referralBonus.classList.remove("skeleton");
+  } catch (err) {
+    console.error("Referral stats error:", err);
+    referralTotal.textContent = "—";
+    referralTotal.classList.remove("skeleton");
+    referralBonus.textContent = "—";
+    referralBonus.classList.remove("skeleton");
+  }
 }
 
 function listenTargetUser() {
@@ -368,7 +386,7 @@ const editCancelBtn = document.getElementById("editCancelBtn");
 const editSaveBtn = document.getElementById("editSaveBtn");
 const editFormMsg = document.getElementById("editFormMsg");
 
-const editableFields = [editFullName, editAccountType, editInstitution, editInstitutionAbbr];
+const editableFields = [editFullName];
 
 function enterEditMode() {
   if (currentStaffRole !== "admin") return; // safety net — support has no button to trigger this anyway
@@ -393,9 +411,6 @@ editCancelBtn.addEventListener("click", () => exitEditMode(true));
 
 editSaveBtn.addEventListener("click", async () => {
   const fullName = editFullName.value.trim();
-  const accountType = editAccountType.value;
-  const institution = editInstitution.value.trim();
-  const institutionAbbr = editInstitutionAbbr.value.trim();
 
   editFormMsg.className = "edit-form-msg";
   editFormMsg.textContent = "";
@@ -405,25 +420,11 @@ editSaveBtn.addEventListener("click", async () => {
     editFormMsg.textContent = "Full name can't be empty.";
     return;
   }
-  if ((accountType === "Student" || accountType === "Teacher") && !institution) {
-    editFormMsg.className = "edit-form-msg show error";
-    editFormMsg.textContent = "Add an institution for this account type, or switch it to None.";
-    return;
-  }
 
   setBtnLoading(editSaveBtn, true);
 
-  const updates = { fullName, accountType };
-  if (accountType === "Student" || accountType === "Teacher") {
-    updates.institution = institution;
-    updates.institutionAbbr = institutionAbbr || null;
-  } else {
-    updates.institution = deleteField();
-    updates.institutionAbbr = deleteField();
-  }
-
   try {
-    await updateDoc(doc(db, "users", targetUid), updates);
+    await updateDoc(doc(db, "users", targetUid), { fullName });
     editFormMsg.className = "edit-form-msg show success";
     editFormMsg.textContent = "Saved.";
     exitEditMode(false);

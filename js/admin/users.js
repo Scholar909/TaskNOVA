@@ -215,7 +215,6 @@ const usersEmpty = document.getElementById("usersEmpty");
 const usersResultCount = document.getElementById("usersResultCount");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 const userSearchInput = document.getElementById("userSearchInput");
-const accountTypeFilter = document.getElementById("accountTypeFilter");
 
 let loadedUsers = [];   // { uid, fullName, username, email, accountType, blocked }
 let lastVisibleDoc = null;
@@ -228,27 +227,16 @@ function escapeHtml(str) {
   }[c]));
 }
 
-function typeBadgeClass(type) {
-  if (type === "Student") return "type-badge student";
-  if (type === "Teacher") return "type-badge teacher";
-  return "type-badge";
-}
-
-function matchesFilters(u, term, typeFilter) {
-  if (typeFilter) {
-    const effectiveType = u.accountType === "Student" || u.accountType === "Teacher" ? u.accountType : "None";
-    if (effectiveType !== typeFilter) return false;
-  }
+function matchesFilters(u, term) {
   if (!term) return true;
-  const haystack = `${u.fullName || ""} ${u.username || ""} ${u.email || ""} ${u.accountType || ""}`.toLowerCase();
+  const haystack = `${u.fullName || ""} ${u.username || ""} ${u.email || ""}`.toLowerCase();
   return haystack.includes(term);
 }
 
 function renderUsers() {
   const term = userSearchInput.value.trim().toLowerCase();
-  const typeFilter = accountTypeFilter.value;
-  const filtered = loadedUsers.filter((u) => matchesFilters(u, term, typeFilter));
-
+  const filtered = loadedUsers.filter((u) => matchesFilters(u, term));
+  
   usersResultCount.textContent = `Showing ${filtered.length.toLocaleString("en-NG")} of ${loadedUsers.length.toLocaleString("en-NG")} loaded users${hasMore ? " — load more to search further" : ""}`;
 
   if (!filtered.length) {
@@ -266,9 +254,6 @@ function renderUsers() {
         <div class="uc-user">
           <strong>@${escapeHtml(u.username || "—")}</strong>
           <span>${escapeHtml(u.fullName || u.email || "—")}</span>
-        </div>
-        <div class="uc-type">
-          <span class="${typeBadgeClass(effectiveType)}">${effectiveType}</span>
         </div>
         <div class="uc-status">
           <span class="status-pill ${isBlocked ? "blocked" : "active"}">
@@ -310,7 +295,6 @@ async function loadUsers() {
         fullName: data.fullName || "",
         username: data.username || "",
         email: data.email || "",
-        accountType: data.accountType || "None",
         blocked: !!data.blocked
       });
     });
@@ -330,7 +314,6 @@ async function loadUsers() {
 }
 
 userSearchInput.addEventListener("input", debounce(renderUsers, 200));
-accountTypeFilter.addEventListener("change", renderUsers);
 loadMoreBtn.addEventListener("click", loadUsers);
 
 function debounce(fn, wait) {
