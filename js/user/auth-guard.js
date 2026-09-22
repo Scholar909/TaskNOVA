@@ -42,7 +42,7 @@ export function initAuthGuard(db, auth, user) {
       }
     }
 
-    // 3. Active System Lock Check
+        // 3. Active System Lock Check
     if (data.locked) {
       shouldLogout = true;
     }
@@ -53,6 +53,16 @@ export function initAuthGuard(db, auth, user) {
       localStorage.setItem("tasknova_lock_message", msg);
       await signOut(auth);
       window.location.href = `login.html?maintenance=true&msg=${encodeURIComponent(msg)}`;
+    }
+  });
+
+  // 5. User Account Block Check (Real-time monitoring)
+  onSnapshot(doc(db, "users", user.uid), async (userSnap) => {
+    if (!userSnap.exists()) return;
+    const userData = userSnap.data();
+    if (userData.blocked === true) {
+      await signOut(auth);
+      window.location.href = `login.html?reason=blocked`;
     }
   });
 }
