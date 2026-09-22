@@ -70,6 +70,40 @@ if (savedTheme === "dark" || savedTheme === "light") {
   setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light", false);
 }
 
+/* ---------------------------------------------------------
+   TAWK.TO DEVICE-SPECIFIC DESTINATION
+   --------------------------------------------------------- */
+
+const tawkDashboardLink = document.getElementById("tawkDashboardLink");
+
+if (tawkDashboardLink) {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+
+  const androidLink =
+    "https://play.google.com/store/apps/details?id=to.tawk.android";
+
+  const iosLink =
+    "https://apps.apple.com/app/id985584499";
+
+  const desktopLink =
+    "https://dashboard.tawk.to/";
+
+  // Android
+  if (/android/i.test(userAgent)) {
+    tawkDashboardLink.href = androidLink;
+  }
+
+  // iPhone / iPad / iPod
+  else if (/iPad|iPhone|iPod/i.test(userAgent)) {
+    tawkDashboardLink.href = iosLink;
+  }
+
+  // Windows, Mac, Linux and other desktop devices
+  else {
+    tawkDashboardLink.href = desktopLink;
+  }
+}
+
 themeSwitch?.addEventListener("click", () => {
   setTheme(body.classList.contains("dark") ? "light" : "dark");
 });
