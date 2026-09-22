@@ -39,15 +39,12 @@ const firebaseConfig = {
 // TODO: replace with the real Skred link for banner-ad inquiries
 // (mirrors the SKRED_ADVERTISE_LINK placeholder already used on the
 // user side in home.js / advertisements.js).
-const SKRED_LINK = "https://skred.example/tasknova-banner-ads";
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
 const PAGE_SIZE = 10;
-
-document.getElementById("skredLink").href = SKRED_LINK;
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
