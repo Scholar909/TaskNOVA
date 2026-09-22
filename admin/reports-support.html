@@ -211,17 +211,13 @@
 
       <!-- ================= REPORTS ================= -->
       <section class="tnr-panel active" id="panel-reports" data-panel="reports">
-        <div class="ledger-note reveal">
-          <i class="bx bx-info-circle"></i>
-          <span>For Task Disputes/Reports Only.</span>
-        </div>
         <div class="panel-meta"><span id="metaReports">Loading reports…</span></div>
         <div class="report-grid" id="listReports">
           <div class="tc-skeleton"></div>
           <div class="tc-skeleton"></div>
         </div>
         <div class="panel-empty" id="emptyReports" style="display:none;">
-          <i class="bx bx-check-double"></i><span>No reports waiting for review.</span>
+          <i class="bx bx-check-double"></i><span>No task reports waiting for review.</span>
         </div>
         <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreReports" style="display:none;">
           <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
@@ -232,23 +228,34 @@
       <section class="tnr-panel" id="panel-support" data-panel="support">
         <div class="ledger-note reveal">
           <i class="bx bx-info-circle"></i>
-          <span>Ensure that tawk.to app is installed on your device. Respond to tickets through mail or live through the app.</span>
+          <span>Tawk.to doesn't support an embedded response interface on the web — respond to live chats and offline tickets from the Tawk.to app. Ticket details below are for reference and follow-up; the actual conversation happens over email.</span>
         </div>
         <div class="support-link-grid">
-          <a
-            class="support-link-card"
-            href="https://dashboard.tawk.to/"
-            target="_blank"
-            rel="noopener noreferrer"
-            id="tawkDashboardLink"
-          >
+          <a class="support-link-card" href="https://dashboard.tawk.to/" target="_blank" rel="noopener" id="tawkDashboardLink">
             <div class="slc-icon"><i class="bx bx-chat"></i></div>
             <div class="slc-body">
-              <strong>Tawk.to Dashboard</strong>
+              <strong>Open Tawk.to App</strong>
+              <span>Respond from the app, not here.</span>
             </div>
             <i class="bx bx-chevron-right slc-arrow"></i>
           </a>
         </div>
+
+        <div class="support-section-head">
+          <h2>Support Tickets</h2>
+          <span class="tab-count" id="countTickets">–</span>
+        </div>
+        <div class="panel-meta"><span id="metaTickets">Loading tickets…</span></div>
+        <div class="ticket-grid" id="listTickets">
+          <div class="tc-skeleton"></div>
+          <div class="tc-skeleton"></div>
+        </div>
+        <div class="panel-empty" id="emptyTickets" style="display:none;">
+          <i class="bx bx-envelope"></i><span>No support tickets yet.</span>
+        </div>
+        <button type="button" class="btn btn-ghost load-more-btn" id="loadMoreTickets" style="display:none;">
+          <span class="btn-spinner"></span><span class="btn-label">Load more</span><i class="bx bx-chevron-down"></i>
+        </button>
       </section>
 
     </div>
