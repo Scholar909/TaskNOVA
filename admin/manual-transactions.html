@@ -227,11 +227,12 @@
       <!-- ================= MANUAL CHANGES ================= -->
       <section class="tnr-panel" id="panel-changes" data-panel="changes">
         <div class="mc-search-row">
-          <div class="mc-search-input-wrap">
+          <div class="mc-search-input-wrap" id="mcSearchWrap">
             <i class="bx bx-search"></i>
-            <input type="text" id="usernameInput" placeholder="Enter username…" autocomplete="off">
+            <span class="mc-search-spinner"></span>
+            <input type="text" id="usernameInput" placeholder="Search by username…" autocomplete="off" oninput="this.value = this.value.toLowerCase();">
           </div>
-          <button type="button" class="btn btn-primary" id="fetchUserBtn"><span class="btn-spinner"></span><i class="bx bx-search-alt"></i><span class="btn-label">Fetch</span></button>
+          <div class="mc-suggest" id="mcSuggest"></div>
         </div>
         <div class="mc-msg" id="mcSearchMsg" style="display:none;"></div>
 
@@ -254,10 +255,10 @@
             </div>
           </div>
 
-          <div class="tc-actions">
-            <button type="button" class="btn btn-success" id="incrementToggleBtn"><i class="bx bx-plus-circle"></i><span class="btn-label">Increment</span></button>
-            <button type="button" class="btn btn-danger" id="decrementToggleBtn"><i class="bx bx-minus-circle"></i><span class="btn-label">Decrement</span></button>
-            <button type="button" class="btn btn-share" id="transferToggleBtn"><i class="bx bx-transfer-alt"></i><span class="btn-label">Transfer</span></button>
+          <div class="mc-toggle-row">
+            <button type="button" class="btn btn-success" id="incrementToggleBtn" title="Increment wallet" aria-label="Increment wallet"><i class="bx bx-plus-circle"></i><span class="btn-label sr-only">Increment</span></button>
+            <button type="button" class="btn btn-danger" id="decrementToggleBtn" title="Decrement wallet" aria-label="Decrement wallet"><i class="bx bx-minus-circle"></i><span class="btn-label sr-only">Decrement</span></button>
+            <button type="button" class="btn btn-share" id="transferToggleBtn" title="Transfer funds" aria-label="Transfer funds"><i class="bx bx-transfer-alt"></i><span class="btn-label sr-only">Transfer</span></button>
           </div>
 
           <!-- INCREMENT slide-out -->
