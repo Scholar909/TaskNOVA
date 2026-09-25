@@ -175,6 +175,16 @@ function escapeHtml(str) {
   }[c]));
 }
 
+// destinationBank is stored as the full admin bank-account object
+// (settings.js: { id, bankName, accountNumber, accountName }), not a
+// string — this is why "Sent to" rendered blank/[object Object] before.
+function formatBankDetails(bank) {
+  if (!bank || typeof bank !== "object" || !bank.bankName) return "—";
+  const last4 = bank.accountNumber ? String(bank.accountNumber).slice(-4) : "";
+  const acctName = bank.accountName ? ` (${escapeHtml(bank.accountName)})` : "";
+  return `${escapeHtml(bank.bankName)}${last4 ? " •••" + escapeHtml(last4) : ""}${acctName}`;
+}
+
 const userCache = new Map();
 async function getUserSummary(uid) {
   if (!uid) return { fullName: "Unknown user", accountType: "" };
@@ -282,27 +292,35 @@ document.getElementById("loadMoreDeposits")?.addEventListener("click", () => loa
 async function renderDepositCard(depositId, deposit) {
   const advertiser = await getUserSummary(deposit.uid);
   const fee = deposit.fee !== undefined ? deposit.fee : Math.max(0, (deposit.totalExpected || 0) - (deposit.amount || 0));
+  const senderLine = deposit.senderBank
+    ? `From ${escapeHtml(deposit.senderBank)}${deposit.senderName ? ", " + escapeHtml(deposit.senderName) : ""}`
+    : "From —";
 
   const card = document.createElement("div");
-  card.className = "task-card";
+  card.className = "rc-card";
   card.innerHTML = `
-    <div class="tc-head">
-      <div class="tc-title-wrap">
-        <div class="tc-title">${escapeHtml(advertiser.fullName)}</div>
-        <div class="tc-sub">${escapeHtml(deposit.senderName || "")}</div>
+    <div class="rc-main">
+      <div class="rc-content">
+        <div class="rc-row1">
+          <span class="rc-name">${escapeHtml(advertiser.fullName)}</span>
+          <span class="rc-amount-wrap">
+            <span class="rc-amount">${formatNaira(deposit.amount)}</span>
+            <span class="rc-status" data-status hidden></span>
+          </span>
+        </div>
+        <div class="rc-row2">
+          <span><i class="bx bx-building-house"></i> ${formatBankDetails(deposit.destinationBank)}</span>
+          <span class="rc-sep">•</span>
+          <span>${senderLine}</span>
+          <span class="rc-sep">•</span>
+          <span>Sent ${formatNaira(deposit.totalExpected)} <span class="rc-fee">(Fee: ${formatNaira(fee)})</span></span>
+        </div>
+        <div class="rc-row3">Submitted ${formatDate(deposit.createdAt)}</div>
       </div>
-      <div class="tc-amount">${formatNaira(deposit.amount)}</div>
-    </div>
-    <div class="md-detail-grid">
-      <div class="md-detail-box"><div class="mdb-label">Sent to</div><div class="mdb-value">${escapeHtml(deposit.destinationBank || "—")}</div></div>
-      <div class="md-detail-box"><div class="mdb-label">Sender's bank</div><div class="mdb-value">${escapeHtml(deposit.senderBank || "—")}</div></div>
-      <div class="md-detail-box"><div class="mdb-label">Total sent</div><div class="mdb-value">${formatNaira(deposit.totalExpected)}</div></div>
-      <div class="md-detail-box"><div class="mdb-label">Transfer fee</div><div class="mdb-value">${formatNaira(fee)}</div></div>
-    </div>
-    <div class="tc-date">Submitted ${formatDate(deposit.createdAt)}</div>
-    <div class="tc-actions">
-      <button type="button" class="btn btn-success" data-act="approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Approve</span></button>
-      <button type="button" class="btn btn-danger" data-act="reject-toggle"><i class="bx bx-x"></i><span class="btn-label">Reject</span></button>
+      <div class="rc-actions" data-actions>
+        <button type="button" class="rc-icon-btn approve" data-act="approve" title="Approve" aria-label="Approve deposit"><span class="btn-spinner"></span><i class="bx bx-check"></i></button>
+        <button type="button" class="rc-icon-btn reject" data-act="reject-toggle" title="Reject" aria-label="Reject deposit"><i class="bx bx-x"></i></button>
+      </div>
     </div>
     <div class="tc-decline-panel" id="rejectPanel-${depositId}"><div><div class="tc-decline-inner">
       <textarea id="rejectReason-${depositId}" placeholder="Reason (optional) — e.g. amount doesn't match, no matching transfer found…"></textarea>
@@ -322,6 +340,24 @@ async function renderDepositCard(depositId, deposit) {
   return card;
 }
 
+// Swaps the tick/cross icon column for a small status pill next to the
+// amount — used both mid-flight ("busy") and for the final result.
+function setCardStatus(card, label, type) {
+  const actions = card.querySelector("[data-actions]");
+  const status = card.querySelector("[data-status]");
+  if (label) {
+    actions.hidden = true;
+    status.hidden = false;
+    status.className = `rc-status ${type}`;
+    status.innerHTML = type === "busy"
+      ? `<span class="btn-spinner"></span>${escapeHtml(label)}`
+      : `<i class="bx ${type === "approved" ? "bx-check-circle" : "bx-x-circle"}"></i>${escapeHtml(label)}`;
+  } else {
+    actions.hidden = false;
+    status.hidden = true;
+  }
+}
+
 async function findMirrorTransactionRef(uid, depositId) {
   const snap = await getDocs(query(collection(db, "users", uid, "transactions"), where("manualDepositId", "==", depositId), limit(1)));
   return snap.empty ? null : snap.docs[0].ref;
@@ -330,6 +366,7 @@ async function findMirrorTransactionRef(uid, depositId) {
 async function approveDeposit(depositId, deposit, fee, cardEl, btnEl) {
   btnEl.classList.add("loading");
   btnEl.disabled = true;
+  setCardStatus(cardEl, "Processing…", "busy");
   try {
     const depositRef = doc(db, "manualDeposits", depositId);
     const userRef = doc(db, "users", deposit.uid);
@@ -367,12 +404,14 @@ async function approveDeposit(depositId, deposit, fee, cardEl, btnEl) {
     });
 
     showToast("Deposit approved and credited.");
-    animateOutAndRemove(cardEl);
+    setCardStatus(cardEl, "Approved", "approved");
     depositState.count = Math.max(0, depositState.count - 1);
     bumpCount("countDeposits", -1);
+    setTimeout(() => animateOutAndRemove(cardEl), 850);
   } catch (err) {
     console.error("Approve deposit error:", err);
     showToast(err.message || "Couldn't approve this deposit. Please try again.", "error");
+    setCardStatus(cardEl, null);
   } finally {
     btnEl.classList.remove("loading");
     btnEl.disabled = false;
@@ -383,6 +422,7 @@ async function rejectDeposit(depositId, deposit, cardEl, btnEl) {
   const reason = document.getElementById(`rejectReason-${depositId}`)?.value.trim() || "";
   btnEl.classList.add("loading");
   btnEl.disabled = true;
+  setCardStatus(cardEl, "Processing…", "busy");
   try {
     const depositRef = doc(db, "manualDeposits", depositId);
     const mirrorTxRef = await findMirrorTransactionRef(deposit.uid, depositId);
@@ -391,12 +431,15 @@ async function rejectDeposit(depositId, deposit, cardEl, btnEl) {
     if (mirrorTxRef) await updateDoc(mirrorTxRef, { status: "rejected" });
 
     showToast("Deposit rejected — the wallet was left untouched.");
-    animateOutAndRemove(cardEl);
+    setCardStatus(cardEl, "Rejected", "rejected");
+    cardEl.querySelector(`#rejectPanel-${depositId}`)?.classList.remove("show");
     depositState.count = Math.max(0, depositState.count - 1);
     bumpCount("countDeposits", -1);
+    setTimeout(() => animateOutAndRemove(cardEl), 850);
   } catch (err) {
     console.error("Reject deposit error:", err);
     showToast(err.message || "Couldn't reject this deposit. Please try again.", "error");
+    setCardStatus(cardEl, null);
   } finally {
     btnEl.classList.remove("loading");
     btnEl.disabled = false;
@@ -409,7 +452,8 @@ async function rejectDeposit(depositId, deposit, cardEl, btnEl) {
 let currentFetchedUser = null; // { uid, fullName, username, wallet }
 
 const usernameInput = document.getElementById("usernameInput");
-const fetchUserBtn = document.getElementById("fetchUserBtn");
+const mcSearchWrap = document.getElementById("mcSearchWrap");
+const mcSuggest = document.getElementById("mcSuggest");
 const mcSearchMsg = document.getElementById("mcSearchMsg");
 const mcUserCard = document.getElementById("mcUserCard");
 
@@ -439,14 +483,26 @@ function renderUserCard() {
   mcUserCard.style.display = "block";
 }
 
-async function fetchUser(prefilledUsername) {
-  const username = (prefilledUsername ?? usernameInput.value).trim();
-  if (!username) { showMcMsg("Enter a username to fetch.", "error"); return; }
+function selectUser(found) {
+  currentFetchedUser = {
+    uid: found.uid,
+    fullName: found.fullName || "TaskNOVA User",
+    username: found.username,
+    wallet: { deposit: found.wallet?.deposit ?? 0, earned: found.wallet?.earned ?? 0 }
+  };
+  closeAllMcPanels();
+  renderUserCard();
+  hideSuggestions();
+}
 
+// Exact-match fallback — used for Enter key and the ?username= prefill
+// link (from User Details' "Wallet Edits" button), where the type-ahead
+// dropdown was never opened.
+async function loadUserByUsername(username) {
+  username = username.trim();
+  if (!username) { showMcMsg("Enter a username to search.", "error"); return; }
   clearMcMsg();
-  fetchUserBtn.classList.add("loading");
-  fetchUserBtn.disabled = true;
-
+  mcSearchWrap.classList.add("loading");
   try {
     const found = await findUserByUsername(username);
     if (!found) {
@@ -455,25 +511,91 @@ async function fetchUser(prefilledUsername) {
       showMcMsg(`No user found with username "${username}".`, "error");
       return;
     }
-    currentFetchedUser = {
-      uid: found.uid,
-      fullName: found.fullName || "TaskNOVA User",
-      username: found.username,
-      wallet: { deposit: found.wallet?.deposit ?? 0, earned: found.wallet?.earned ?? 0 }
-    };
-    closeAllMcPanels();
-    renderUserCard();
+    selectUser(found);
   } catch (err) {
     console.error("Fetch user error:", err);
     showMcMsg("Couldn't fetch that user. Please try again.", "error");
   } finally {
-    fetchUserBtn.classList.remove("loading");
-    fetchUserBtn.disabled = false;
+    mcSearchWrap.classList.remove("loading");
   }
 }
 
-fetchUserBtn.addEventListener("click", () => fetchUser());
-usernameInput.addEventListener("keydown", (e) => { if (e.key === "Enter") fetchUser(); });
+/* ---------- LIVE SEARCH (type-ahead, no Fetch button) ---------- */
+function hideSuggestions() {
+  mcSuggest.classList.remove("show");
+  mcSuggest.innerHTML = "";
+}
+
+function renderSuggestions(users) {
+  if (!users.length) {
+    mcSuggest.innerHTML = `<div class="mc-suggest-empty">No matching usernames.</div>`;
+    mcSuggest.classList.add("show");
+    return;
+  }
+  mcSuggest.innerHTML = users.map((u) => `
+    <button type="button" class="mc-suggest-item" data-uid="${escapeHtml(u.uid)}">
+      <span class="mc-suggest-avatar">${escapeHtml((u.fullName || "?").trim().charAt(0).toUpperCase() || "?")}</span>
+      <span class="mc-suggest-info">
+        <strong>${escapeHtml(u.fullName || "TaskNOVA User")}</strong>
+        <span>@${escapeHtml(u.username || "—")}</span>
+      </span>
+    </button>
+  `).join("");
+  mcSuggest.querySelectorAll(".mc-suggest-item").forEach((btn, i) => {
+    btn.addEventListener("click", () => {
+      usernameInput.value = users[i].username || "";
+      clearMcMsg();
+      selectUser(users[i]);
+    });
+  });
+  mcSuggest.classList.add("show");
+}
+
+let searchDebounce = null;
+let searchToken = 0;
+
+async function runLiveSearch(term) {
+  const myToken = ++searchToken;
+  mcSearchWrap.classList.add("loading");
+  try {
+    const snap = await getDocs(query(
+      collection(db, "users"),
+      orderBy("username"),
+      where("username", ">=", term),
+      where("username", "<=", term + "\uf8ff"),
+      limit(6)
+    ));
+    if (myToken !== searchToken) return; // a newer keystroke already fired
+    const users = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+    renderSuggestions(users);
+  } catch (err) {
+    console.error("Live search error:", err);
+  } finally {
+    if (myToken === searchToken) mcSearchWrap.classList.remove("loading");
+  }
+}
+
+usernameInput.addEventListener("input", () => {
+  clearMcMsg();
+  const term = usernameInput.value.trim();
+  clearTimeout(searchDebounce);
+  if (term.length < 2) {
+    searchToken++; // invalidate any in-flight search
+    hideSuggestions();
+    mcSearchWrap.classList.remove("loading");
+    return;
+  }
+  searchDebounce = setTimeout(() => runLiveSearch(term), 300);
+});
+
+usernameInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { clearTimeout(searchDebounce); loadUserByUsername(usernameInput.value); }
+  if (e.key === "Escape") hideSuggestions();
+});
+
+document.addEventListener("click", (e) => {
+  if (!mcSearchWrap.contains(e.target) && !mcSuggest.contains(e.target)) hideSuggestions();
+});
 
 /* ---------------------------------------------------------
    INCREMENT / DECREMENT / TRANSFER — slide-out panels
@@ -742,7 +864,7 @@ onAuthStateChanged(auth, async (user) => {
     activateTab("changes");
     if (prefillUsername) {
       usernameInput.value = prefillUsername;
-      fetchUser(prefillUsername);
+      loadUserByUsername(prefillUsername);
     }
   } else {
     loadedTabs.add("deposits");
@@ -796,8 +918,15 @@ onAuthStateChanged(auth, async (user) => {
      Decrement was already specified — same math applies to a
      transfer's sending side.
 
-   - Username lookups (Fetch, and resolving a transfer recipient)
-     query where("username","==",...) with limit(1) — this assumes
-     usernames are unique and requires a single-field index, which
-     Firestore creates automatically.
+   - Manual Changes' username search now type-ahead: input is debounced
+     (300ms, 2+ chars) into a prefix range query on `username`
+     (>= term, <= term+"\uf8ff", limit 6), rendered as a picklist —
+     no Fetch button/click required. Selecting a suggestion uses the
+     doc data already returned by that query (no second read).
+     Resolving a transfer recipient, and the Enter-key/?username=
+     prefill fallback, still use the exact where("username","==",...)
+     lookup with limit(1) — this assumes usernames are unique and
+     requires a single-field index, which Firestore creates
+     automatically. The prefix query needs the same index (range +
+     orderBy on the same single field), also automatic.
    =========================================================== */
