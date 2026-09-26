@@ -613,42 +613,40 @@ const TICKET_STATUS_META = {
 
 function renderTicketCard(ticketId, ticket) {
   const card = document.createElement("div");
-  card.className = "ticket-card";
+  const statusMeta = TICKET_STATUS_META[ticket.status] || null;
+  card.className = `ticket-card${statusMeta ? " ticket-card-resolved" : ""}`;
   card.dataset.id = ticketId;
 
-  const statusMeta = TICKET_STATUS_META[ticket.status] || null;
+  const requesterDisplay = ticket.requesterUsername && ticket.requesterUsername !== "—" 
+    ? `@${escapeHtml(ticket.requesterUsername)}` 
+    : escapeHtml(ticket.requesterName || "—");
+
+  if (statusMeta) {
+    card.innerHTML = `
+      <div class="ticket-rect-row">
+        <div class="ticket-rect-left">
+          <div class="tc-title">${escapeHtml(ticket.subjectLabel || ticket.subject || "Support ticket")}</div>
+          <div class="tc-sub">${requesterDisplay} · ${formatDate(ticket.createdAt)}</div>
+        </div>
+        <div class="ticket-action-slot">
+          <span class="ticket-status-badge ${statusMeta.cls}"><i class="bx ${statusMeta.icon}"></i> ${statusMeta.label}</span>
+        </div>
+      </div>
+    `;
+    return card;
+  }
 
   card.innerHTML = `
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(ticket.subjectLabel || ticket.subject || "Support ticket")}</div>
-        <div class="tc-sub">${escapeHtml(ticket.requesterName || "—")} · @${escapeHtml(ticket.requesterUsername || "—")} · ${escapeHtml(ticket.requesterEmail || "—")}</div>
+        <div class="tc-sub">${requesterDisplay} · ${escapeHtml(ticket.requesterEmail || "—")}</div>
       </div>
     </div>
     <p class="ticket-message">${escapeHtml(ticket.message || "")}</p>
     <div class="tc-date">${formatDate(ticket.createdAt)}</div>
     <div class="ticket-action-slot"></div>
   `;
-
-  const actionSlot = card.querySelector(".ticket-action-slot");
-  const mailtoHref = `mailto:${encodeURIComponent(ticket.requesterEmail || "")}?subject=${encodeURIComponent("Re: " + (ticket.subjectLabel || ticket.subject || "Your TaskNOVA support ticket"))}`;
-
-  if (statusMeta) {
-    actionSlot.innerHTML = `<span class="ticket-status-badge ${statusMeta.cls}"><i class="bx ${statusMeta.icon}"></i> ${statusMeta.label}</span>`;
-  } else {
-    actionSlot.innerHTML = `
-      <div class="tc-actions">
-        <a class="btn btn-ghost" href="${mailtoHref}"><i class="bx bx-envelope"></i><span class="btn-label">Respond on Email</span></a>
-        <button type="button" class="btn btn-success" data-act="tick"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Dealt With</span></button>
-        <button type="button" class="btn btn-danger" data-act="cross"><span class="btn-spinner"></span><i class="bx bx-x"></i><span class="btn-label">Not Dealt With</span></button>
-      </div>
-    `;
-    actionSlot.querySelector('[data-act="tick"]').addEventListener("click", (e) => resolveTicket(ticketId, "resolved", card, e.currentTarget));
-    actionSlot.querySelector('[data-act="cross"]').addEventListener("click", (e) => resolveTicket(ticketId, "closed_unresolved", card, e.currentTarget));
-  }
-
-  return card;
-}
 
 async function resolveTicket(ticketId, status, cardEl, btnEl) {
   btnEl.classList.add("loading");
@@ -867,4 +865,4 @@ if (tawkDashboardLink) {
 
     }, 1500);
   });
-}
+}}
