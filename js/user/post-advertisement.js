@@ -859,7 +859,8 @@ postAdForm.addEventListener("submit", async (e) => {
       const snap = await transaction.get(userRef);
       if (!snap.exists()) throw new Error("Account not found.");
 
-      const deposit = snap.data().wallet?.deposit ?? 0;
+      const buyer = snap.data();
+      const deposit = buyer.wallet?.deposit ?? 0;
       if (price > deposit) throw new Error("Your Deposit Balance is too low to post this ad.");
 
       transaction.update(userRef, { "wallet.deposit": deposit - price });
@@ -872,6 +873,18 @@ postAdForm.addEventListener("submit", async (e) => {
         title: `Posted advertisement: ${adData.title}`,
         amount: price,
         status: "successful",
+        createdAt: serverTimestamp()
+      });
+
+      // The full price is TaskNOVA's own revenue here — unlike a task,
+      // an ad/banner slot has no separate "worker payout" to net out.
+      const ledgerRef = doc(collection(db, "platformLedger"));
+      transaction.set(ledgerRef, {
+        source: { uid: currentUser.uid, name: buyer.fullName || "TaskNOVA User", username: buyer.username || "" },
+        reason: isBannerMode ? "Banner advertisement" : "Advertisement post",
+        destination: { name: "TaskNOVA Revenue" },
+        amount: price,
+        category: isBannerMode ? "banner_revenue" : "ad_revenue",
         createdAt: serverTimestamp()
       });
     });
@@ -996,4 +1009,18 @@ onAuthStateChanged(auth, (user) => {
      the actual Top/Bottom/Floating banner box is built out with a
      real size, update just those three numbers — the checklist,
      labels, and validation all read from that one object.
+
+   - Every purchase now also writes to platformLedger (category
+     "ad_revenue" or "banner_revenue") in the same transaction as
+     the wallet debit — the full `price` is logged since an ad/
+     banner slot has no worker payout to net out first, unlike a
+     task. This is the second real writer to the ledger (manual-
+     transactions.js's manual-deposit fee is the first); Finance's
+     Revenue tab picks both up automatically. Task Fees and
+     Withdrawal Fees are still gaps: task platformFee only becomes
+     real revenue once a submission is approved (that flow lives on
+     the not-yet-built task-approval page), and the withdrawal fee
+     is computed inside the requestWithdrawal Edge Function, not in
+     any client file — both need the same ledger write added where
+     they actually happen.
    =========================================================== */
