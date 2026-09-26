@@ -13,20 +13,13 @@ import {
   getFirestore,
   doc,
   getDoc,
-  updateDoc,
   collection,
-  collectionGroup,
   query,
   where,
   orderBy,
   limit,
   startAfter,
-  getDocs,
-  getCountFromServer,
-  getAggregateFromServer,
-  sum,
-  runTransaction,
-  serverTimestamp
+  getDocs
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -43,15 +36,23 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const PAGE_SIZE = 15;
-const WITHDRAWAL_FEE_RATE = 0.05; // fallback only — used if fee/netAmount aren't stored on the doc
 
-const REVENUE_CATEGORIES = [
-  { key: "task_fee", label: "Task Fees", valueEl: "revTaskFee", pctEl: "revTaskFeePct" },
-  { key: "ad_revenue", label: "Ad Revenue", valueEl: "revAdRevenue", pctEl: "revAdRevenuePct" },
-  { key: "banner_revenue", label: "Banner Revenue", valueEl: "revBannerRevenue", pctEl: "revBannerRevenuePct" },
-  { key: "manual_deposit", label: "Manual Deposit Fees", valueEl: "revManualDeposit", pctEl: "revManualDepositPct" },
-  { key: "other", label: "Other", valueEl: "revOther", pctEl: "revOtherPct" }
-];
+// Soft caps on the two client-side aggregation reads (a user's lifetime
+// transaction list, and the full revenue ledger for the Revenue tab).
+// Both are plain client-side sums — there's no Cloud Function rollup —
+// so these exist to keep a single page load bounded. See NOTES.
+const TX_SUM_CAP = 1000;
+const LEDGER_SCAN_CAP = 2000;
+
+const REVENUE_CATEGORIES = {
+  manual_deposit: { label: "Manual Deposit Fees", color: "#086cff", icon: "bx-transfer-alt" },
+  task_fee: { label: "Task Fees", color: "#7c3aed", icon: "bx-task" },
+  ad_revenue: { label: "Advertisement Revenue", color: "#17c992", icon: "bx-grid-alt" },
+  banner_revenue: { label: "Banner Revenue", color: "#ffb020", icon: "bx-image" },
+  withdrawal_fee: { label: "Withdrawal Fees", color: "#ff4d5e", icon: "bx-money-withdraw" },
+  other: { label: "Other Platform Fees", color: "#53627a", icon: "bx-receipt" }
+};
+function categoryMeta(cat) { return REVENUE_CATEGORIES[cat] || REVENUE_CATEGORIES.other; }
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
@@ -174,32 +175,16 @@ function showToast(message, type = "success") {
 function formatNaira(n) {
   return "₦" + (Number(n) || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function formatDate(ts) {
+// Revenue History wants the full month name with no time, e.g. "25 September 2026".
+function formatLongDate(ts) {
   if (!ts) return "—";
   const d = ts.toDate ? ts.toDate() : new Date(ts);
-  return d.toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) +
-    " · " + d.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString("en-NG", { day: "numeric", month: "long", year: "numeric" });
 }
 function escapeHtml(str) {
   return String(str ?? "").replace(/[&<>"']/g, (c) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   }[c]));
-}
-
-const userCache = new Map();
-async function getUserSummary(uid) {
-  if (!uid) return { fullName: "Unknown user", accountType: "" };
-  if (userCache.has(uid)) return userCache.get(uid);
-  try {
-    const snap = await getDoc(doc(db, "users", uid));
-    const summary = snap.exists()
-      ? { fullName: snap.data().fullName || "TaskNOVA User", accountType: snap.data().accountType || "" }
-      : { fullName: "Deleted user", accountType: "" };
-    userCache.set(uid, summary);
-    return summary;
-  } catch {
-    return { fullName: "Unknown user", accountType: "" };
-  }
 }
 
 /* ---------------------------------------------------------
@@ -209,388 +194,409 @@ const tabButtons = document.querySelectorAll(".tnr-tab");
 const panels = document.querySelectorAll(".tnr-panel");
 const loadedTabs = new Set();
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab;
-    tabButtons.forEach((b) => { b.classList.toggle("active", b === btn); b.setAttribute("aria-selected", b === btn ? "true" : "false"); });
-    panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === tab));
-    if (!loadedTabs.has(tab)) {
-      loadedTabs.add(tab);
-      if (tab === "withdrawals") loadWithdrawals(true);
-      else if (tab === "transactions") loadLedger(true);
-      else if (tab === "revenue") loadRevenue();
-    }
-  });
-});
+function activateTab(tab) {
+  tabButtons.forEach((b) => { b.classList.toggle("active", b.dataset.tab === tab); b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"); });
+  panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === tab));
+  if (!loadedTabs.has(tab)) {
+    loadedTabs.add(tab);
+    if (tab === "revenue") loadRevenueOverview();
+    if (tab === "history") loadHistory(true);
+  }
+}
+tabButtons.forEach((btn) => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
 
 /* ===========================================================
-   WITHDRAWALS TAB
-   Reads across every user's own transactions subcollection via
-   a collectionGroup query (type == "withdrawal"), rather than a
-   separate top-level collection — wallet.js's requestWithdrawal
-   Cloud Function writes withdrawal requests as ordinary
-   users/{uid}/transactions/{id} docs, so this is the same data
-   the user sees on their own Transactions page, just queried
-   across everyone at once.
+   TAB 1 — USER INFORMATION
    =========================================================== */
-let withdrawFilter = "needs_attention";
-const withdrawState = { lastDoc: null, hasMore: true, isLoading: false, count: 0 };
+const finInput = document.getElementById("finUsernameInput");
+const finSearchWrap = document.getElementById("finSearchWrap");
+const finSuggest = document.getElementById("finSuggest");
+const finClearBtn = document.getElementById("finClearBtn");
+const finEmptyState = document.getElementById("finEmptyState");
+const finUserCard = document.getElementById("finUserCard");
 
-function withdrawStatusConstraint() {
-  if (withdrawFilter === "needs_attention") return where("status", "in", ["pending", "processing"]);
-  return where("status", "==", withdrawFilter);
+function hideFinSuggestions() {
+  finSuggest.classList.remove("show");
+  finSuggest.innerHTML = "";
 }
 
-document.querySelectorAll('#withdrawFilterRow .rf-chip').forEach((chip) => {
-  chip.addEventListener("click", () => {
-    if (chip.dataset.wf === withdrawFilter) return;
-    document.querySelectorAll('#withdrawFilterRow .rf-chip').forEach((c) => c.classList.toggle("active", c === chip));
-    withdrawFilter = chip.dataset.wf;
-    loadWithdrawals(true);
+function renderFinSuggestions(users) {
+  if (!users.length) {
+    finSuggest.innerHTML = `<div class="fin-suggest-empty">No matching usernames.</div>`;
+    finSuggest.classList.add("show");
+    return;
+  }
+  finSuggest.innerHTML = users.map((u, i) => `
+    <button type="button" class="fin-suggest-item" data-i="${i}">
+      <span class="fin-suggest-avatar">${escapeHtml((u.fullName || "?").trim().charAt(0).toUpperCase() || "?")}</span>
+      <span class="fin-suggest-info">
+        <strong>${escapeHtml(u.fullName || "TaskNOVA User")}</strong>
+        <span>@${escapeHtml(u.username || "—")}</span>
+      </span>
+    </button>
+  `).join("");
+  finSuggest.querySelectorAll(".fin-suggest-item").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const u = users[Number(btn.dataset.i)];
+      finInput.value = u.username || "";
+      hideFinSuggestions();
+      loadUserFinancials(u);
+    });
   });
+  finSuggest.classList.add("show");
+}
+
+let finSearchDebounce = null;
+let finSearchToken = 0;
+
+async function runFinSearch(term) {
+  const myToken = ++finSearchToken;
+  finSearchWrap.classList.add("loading");
+  try {
+    const snap = await getDocs(query(
+      collection(db, "users"),
+      orderBy("username"),
+      where("username", ">=", term),
+      where("username", "<=", term + "\uf8ff"),
+      limit(6)
+    ));
+    if (myToken !== finSearchToken) return;
+    renderFinSuggestions(snap.docs.map((d) => ({ uid: d.id, ...d.data() })));
+  } catch (err) {
+    console.error("Finance user search error:", err);
+  } finally {
+    if (myToken === finSearchToken) finSearchWrap.classList.remove("loading");
+  }
+}
+
+// Auto-lowercase as the admin types, cursor position preserved.
+finInput.addEventListener("input", () => {
+  const start = finInput.selectionStart, end = finInput.selectionEnd;
+  finInput.value = finInput.value.toLowerCase();
+  finInput.setSelectionRange(start, end);
+
+  finClearBtn.style.display = finInput.value ? "grid" : "none";
+  const term = finInput.value.trim();
+  clearTimeout(finSearchDebounce);
+  if (term.length < 2) {
+    finSearchToken++;
+    hideFinSuggestions();
+    finSearchWrap.classList.remove("loading");
+    return;
+  }
+  finSearchDebounce = setTimeout(() => runFinSearch(term), 250);
 });
 
-async function loadWithdrawals(reset = false) {
-  if (withdrawState.isLoading) return;
-  if (reset) {
-    Object.assign(withdrawState, { lastDoc: null, hasMore: true, isLoading: false, count: 0 });
-    document.getElementById("listWithdrawals").innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
-    document.getElementById("emptyWithdrawals").style.display = "none";
-  }
-  if (!withdrawState.hasMore) return;
+finClearBtn.addEventListener("click", () => {
+  finInput.value = "";
+  finClearBtn.style.display = "none";
+  hideFinSuggestions();
+  finUserCard.style.display = "none";
+  finEmptyState.style.display = "flex";
+  finInput.focus();
+});
 
-  withdrawState.isLoading = true;
-  const loadMoreBtn = document.getElementById("loadMoreWithdrawals");
-  loadMoreBtn.classList.add("loading");
-  loadMoreBtn.disabled = true;
+document.addEventListener("click", (e) => {
+  if (!finSearchWrap.contains(e.target) && !finSuggest.contains(e.target)) hideFinSuggestions();
+});
+
+async function loadUserFinancials(u) {
+  finEmptyState.style.display = "none";
+  finUserCard.style.display = "block";
+
+  const fullName = u.fullName || "TaskNOVA User";
+  document.getElementById("finAvatar").textContent = fullName.trim().charAt(0).toUpperCase() || "T";
+  document.getElementById("finFullName").textContent = fullName;
+  document.getElementById("finUsername").textContent = "@" + (u.username || "—");
+
+  document.getElementById("finDeposit").textContent = formatNaira(u.wallet?.deposit ?? 0);
+  document.getElementById("finEarned").textContent = formatNaira(u.wallet?.earned ?? 0);
+
+  document.getElementById("finLifetimeDeposited").textContent = formatNaira(u.lifetimeDeposited ?? 0);
+  document.getElementById("finLifetimeEarned").textContent = formatNaira(u.lifetimeEarned ?? 0);
+
+  const spentEl = document.getElementById("finTotalSpent");
+  const withdrawnEl = document.getElementById("finTotalWithdrawn");
+  const capNoteEl = document.getElementById("finCapNote");
+  spentEl.classList.add("skeleton"); spentEl.textContent = "";
+  withdrawnEl.classList.add("skeleton"); withdrawnEl.textContent = "";
+  capNoteEl.style.display = "none";
 
   try {
-    const constraints = [
-      where("type", "==", "withdrawal"),
-      withdrawStatusConstraint(),
-      orderBy("createdAt", "desc")
-    ];
-    if (withdrawState.lastDoc) constraints.push(startAfter(withdrawState.lastDoc));
-    constraints.push(limit(PAGE_SIZE));
+    const snap = await getDocs(query(
+      collection(db, "users", u.uid, "transactions"),
+      orderBy("createdAt", "desc"),
+      limit(TX_SUM_CAP)
+    ));
 
-    const snap = await getDocs(query(collectionGroup(db, "transactions"), ...constraints));
-    const listEl = document.getElementById("listWithdrawals");
-    if (reset) listEl.innerHTML = "";
+    let totalSpent = 0;
+    let totalWithdrawn = 0;
+    snap.docs.forEach((d) => {
+      const tx = d.data();
+      const amount = Number(tx.amount) || 0;
+      if (tx.direction === "debit" && (tx.type === "task_post" || tx.type === "ad_post") && tx.status === "successful") {
+        totalSpent += amount;
+      } else if (tx.type === "withdrawal" && tx.status !== "failed" && tx.status !== "rejected") {
+        totalWithdrawn += amount;
+      }
+    });
 
-    if (snap.empty && withdrawState.count === 0) {
-      document.getElementById("emptyWithdrawals").style.display = "flex";
-      document.getElementById("metaWithdrawals").textContent = "Nothing here.";
-      withdrawState.hasMore = false;
-      loadMoreBtn.style.display = "none";
-      return;
+    spentEl.textContent = formatNaira(totalSpent);
+    withdrawnEl.textContent = formatNaira(totalWithdrawn);
+    if (snap.docs.length === TX_SUM_CAP) {
+      capNoteEl.style.display = "block";
+      capNoteEl.textContent = `Based on the ${TX_SUM_CAP.toLocaleString()} most recent transactions.`;
     }
-
-    for (const docSnap of snap.docs) {
-      const cardEl = await renderWithdrawalCard(docSnap);
-      listEl.appendChild(cardEl);
-    }
-
-    withdrawState.count += snap.docs.length;
-    withdrawState.lastDoc = snap.docs[snap.docs.length - 1] || withdrawState.lastDoc;
-    withdrawState.hasMore = snap.docs.length === PAGE_SIZE;
-    loadMoreBtn.style.display = withdrawState.hasMore ? "inline-flex" : "none";
-    document.getElementById("metaWithdrawals").textContent = `${withdrawState.count} request${withdrawState.count === 1 ? "" : "s"} loaded`;
   } catch (err) {
-    console.error("Load withdrawals error:", err);
-    showToast("Couldn't load withdrawals. Please try again.", "error");
+    console.error("Sum user transactions error:", err);
+    spentEl.textContent = "—";
+    withdrawnEl.textContent = "—";
+    showToast("Couldn't total this user's spend/withdrawals. Please try again.", "error");
   } finally {
-    withdrawState.isLoading = false;
-    loadMoreBtn.classList.remove("loading");
-    loadMoreBtn.disabled = false;
+    spentEl.classList.remove("skeleton");
+    withdrawnEl.classList.remove("skeleton");
   }
 }
-document.getElementById("loadMoreWithdrawals")?.addEventListener("click", () => loadWithdrawals(false));
 
-async function renderWithdrawalCard(docSnap) {
-  const tx = docSnap.data();
-  const txId = docSnap.id;
-  const uid = docSnap.ref.parent.parent.id;
-  const advertiser = await getUserSummary(uid);
+/* ===========================================================
+   TAB 2 — REVENUE
+   =========================================================== */
+async function loadRevenueOverview() {
+  const totalEl = document.getElementById("revTotal");
+  const monthEl = document.getElementById("revMonth");
+  const growthPill = document.getElementById("revGrowthPill");
+  const chartEmpty = document.getElementById("revChartEmpty");
+  const donut = document.getElementById("revDonut");
+  const donutTotal = document.getElementById("revDonutTotal");
+  const legend = document.getElementById("revLegend");
+  const breakdownEmpty = document.getElementById("revBreakdownEmpty");
+  const capNote = document.getElementById("revCapNote");
 
-  const amount = tx.amount || 0;
-  const fee = tx.fee !== undefined ? tx.fee : amount * WITHDRAWAL_FEE_RATE;
-  const netAmount = tx.netAmount !== undefined ? tx.netAmount : amount - fee;
-  const bankName = tx.bankName || tx.bank_name || "—";
-  const accountNumber = tx.accountNumber || tx.account_number || "—";
-  const accountName = tx.accountName || tx.account_name || "—";
-  const status = tx.status || "pending";
-  const resolvable = status === "pending" || status === "processing" || status === "sent";
+  totalEl.classList.add("skeleton"); totalEl.textContent = "";
+  monthEl.classList.add("skeleton"); monthEl.textContent = "";
 
-  const card = document.createElement("div");
-  card.className = "task-card";
-  card.innerHTML = `
-    <div class="tc-head">
-      <div class="tc-title-wrap">
-        <div class="tc-title">${escapeHtml(advertiser.fullName)}</div>
-        <div class="tc-sub">${escapeHtml(advertiser.accountType || "")}</div>
-      </div>
-      <div class="tc-amount">${formatNaira(amount)}</div>
-    </div>
-    <div class="tc-tags">
-      <span class="tc-tag status-${escapeHtml(status)}"><i class="bx bx-loader-circle"></i> ${escapeHtml(status)}</span>
-    </div>
-    <div class="bank-detail-box">
-      <strong>${escapeHtml(accountName)}</strong>
-      <span>${escapeHtml(bankName)} · ${escapeHtml(accountNumber)}</span>
-    </div>
-    <div class="fee-breakdown">
-      <div class="fee-box"><div class="fb-label">Requested</div><div class="fb-value">${formatNaira(amount)}</div></div>
-      <div class="fee-box"><div class="fb-label">Fee (5%)</div><div class="fb-value">${formatNaira(fee)}</div></div>
-      <div class="fee-box"><div class="fb-label">Received</div><div class="fb-value">${formatNaira(netAmount)}</div></div>
-    </div>
-    <div class="tc-date">Requested ${formatDate(tx.createdAt)}</div>
-    <div class="tc-action-slot"></div>
+  try {
+    const snap = await getDocs(query(
+      collection(db, "platformLedger"),
+      orderBy("createdAt", "desc"),
+      limit(LEDGER_SCAN_CAP)
+    ));
+
+    const entries = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        amount: Number(data.amount) || 0,
+        category: data.category || "other",
+        date: data.createdAt?.toDate ? data.createdAt.toDate() : null
+      };
+    });
+
+    const totalRevenue = entries.reduce((sum, e) => sum + e.amount, 0);
+    totalEl.textContent = formatNaira(totalRevenue);
+
+    const now = new Date();
+    const monthKey = (d) => d ? `${d.getFullYear()}-${d.getMonth()}` : null;
+    const thisKey = monthKey(now);
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevKey = monthKey(prevDate);
+
+    let thisMonth = 0, lastMonth = 0;
+    entries.forEach((e) => {
+      const k = monthKey(e.date);
+      if (k === thisKey) thisMonth += e.amount;
+      else if (k === prevKey) lastMonth += e.amount;
+    });
+    monthEl.textContent = formatNaira(thisMonth);
+
+    let growthLabel = "No data last month";
+    let growthClass = "flat";
+    if (lastMonth > 0) {
+      const pct = ((thisMonth - lastMonth) / lastMonth) * 100;
+      growthClass = pct >= 0 ? "up" : "down";
+      growthLabel = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs last month`;
+    } else if (thisMonth > 0) {
+      growthClass = "up";
+      growthLabel = "▲ New this month";
+    }
+    growthPill.className = `growth-pill ${growthClass}`;
+    growthPill.textContent = growthLabel;
+
+    if (snap.docs.length === LEDGER_SCAN_CAP) {
+      capNote.style.display = "block";
+      capNote.textContent = `Figures reflect the ${LEDGER_SCAN_CAP.toLocaleString()} most recent revenue entries.`;
+    } else {
+      capNote.style.display = "none";
+    }
+
+    /* ---- Trend: last 6 months, oldest → newest ---- */
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({ key: monthKey(d), label: d.toLocaleDateString("en-NG", { month: "short" }), value: 0 });
+    }
+    entries.forEach((e) => {
+      const k = monthKey(e.date);
+      const bucket = months.find((m) => m.key === k);
+      if (bucket) bucket.value += e.amount;
+    });
+
+    chartEmpty.classList.toggle("show", totalRevenue === 0);
+    if (totalRevenue > 0) renderTrendChart(months);
+
+    /* ---- Breakdown by category ---- */
+    const byCategory = {};
+    entries.forEach((e) => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount; });
+    const rows = Object.entries(byCategory)
+      .map(([cat, amount]) => ({ cat, amount, meta: categoryMeta(cat) }))
+      .filter((r) => r.amount > 0)
+      .sort((a, b) => b.amount - a.amount);
+
+    if (!rows.length) {
+      donut.parentElement.style.display = "none";
+      legend.innerHTML = "";
+      breakdownEmpty.style.display = "flex";
+    } else {
+      donut.parentElement.style.display = "flex";
+      breakdownEmpty.style.display = "none";
+      renderBreakdown(rows, totalRevenue, donut, donutTotal, legend);
+    }
+  } catch (err) {
+    console.error("Load revenue overview error:", err);
+    totalEl.textContent = "—";
+    monthEl.textContent = "—";
+    showToast("Couldn't load revenue figures. Please try again.", "error");
+  } finally {
+    totalEl.classList.remove("skeleton");
+    monthEl.classList.remove("skeleton");
+  }
+}
+
+function renderTrendChart(months) {
+  const svg = document.getElementById("revTrendSvg");
+  const labelsEl = document.getElementById("revTrendLabels");
+  const W = 600, H = 160, PAD = 8;
+  const max = Math.max(1, ...months.map((m) => m.value)) * 1.15;
+  const n = months.length;
+  const stepX = n > 1 ? (W - PAD * 2) / (n - 1) : 0;
+
+  const points = months.map((m, i) => {
+    const x = PAD + i * stepX;
+    const y = H - PAD - (m.value / max) * (H - PAD * 2);
+    return { x, y };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${points[points.length - 1].x.toFixed(1)},${H} L${points[0].x.toFixed(1)},${H} Z`;
+
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML = `
+    <path class="gc-area" d="${areaPath}" fill="var(--primary)"></path>
+    <path class="gc-line" d="${linePath}"></path>
+    ${points.map((p) => `<circle class="gc-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4"></circle>`).join("")}
   `;
 
-  const actionSlot = card.querySelector(".tc-action-slot");
-  if (resolvable) {
-    actionSlot.innerHTML = `
-      <div class="tc-actions">
-        <button type="button" class="btn btn-ghost" data-act="resolve-toggle"><i class="bx bx-check-circle"></i><span class="btn-label">Mark Resolved</span></button>
-      </div>
-      <div class="tc-decline-panel" id="resolvePanel-${txId}"><div><div class="tc-resolve-inner">
-        <textarea id="resolveNote-${txId}" placeholder="Note (optional) — e.g. why this needed manual resolution…"></textarea>
-        <div class="resolve-choice-row">
-          <button type="button" class="btn btn-success" data-act="mark-completed"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Mark Completed</span></button>
-          <button type="button" class="btn btn-danger" data-act="reject-refund"><span class="btn-spinner"></span><i class="bx bx-undo"></i><span class="btn-label">Reject &amp; Refund</span></button>
-        </div>
-      </div></div></div>
-    `;
-    const panel = actionSlot.querySelector(`#resolvePanel-${txId}`);
-    actionSlot.querySelector('[data-act="resolve-toggle"]').addEventListener("click", () => panel.classList.add("show"));
-    actionSlot.querySelector('[data-act="mark-completed"]').addEventListener("click", (e) => resolveWithdrawal(uid, txId, "completed", amount, card, e.currentTarget));
-    actionSlot.querySelector('[data-act="reject-refund"]').addEventListener("click", (e) => resolveWithdrawal(uid, txId, "rejected", amount, card, e.currentTarget));
-  }
-
-  return card;
+  labelsEl.innerHTML = months.map((m, i) => {
+    const leftPct = n > 1 ? (i / (n - 1)) * 100 : 50;
+    return `<span style="left:${leftPct}%">${escapeHtml(m.label)}</span>`;
+  }).join("");
 }
 
-/* ---------------------------------------------------------
-   ACTION — MARK COMPLETED / REJECT & REFUND
-   Completed just closes out the request (the transfer already
-   went out via Paystack or a manual bank transfer — no wallet
-   change). Rejected credits the gross `amount` back to
-   wallet.earned (that's what was deducted at request time) and
-   logs a refund transaction, since the payout never went through.
-   --------------------------------------------------------- */
-async function resolveWithdrawal(uid, txId, outcome, amount, cardEl, btnEl) {
-  const note = document.getElementById(`resolveNote-${txId}`)?.value.trim() || "";
-  btnEl.classList.add("loading");
-  btnEl.disabled = true;
-  try {
-    const txRef = doc(db, "users", uid, "transactions", txId);
+function renderBreakdown(rows, total, donutEl, donutTotalEl, legendEl) {
+  let acc = 0;
+  const stops = rows.map((r) => {
+    const start = (acc / total) * 100;
+    acc += r.amount;
+    const end = (acc / total) * 100;
+    return `${r.meta.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+  });
+  donutEl.style.background = `conic-gradient(${stops.join(", ")})`;
+  donutTotalEl.innerHTML = `<strong>${formatNaira(total)}</strong><span>Total Revenue</span>`;
 
-    if (outcome === "completed") {
-      await updateDoc(txRef, {
-        status: "completed",
-        resolutionNote: note || null,
-        resolvedAt: serverTimestamp()
-      });
-      showToast("Withdrawal marked completed.");
-    } else {
-      const userRef = doc(db, "users", uid);
-      await runTransaction(db, async (transaction) => {
-        const userSnap = await transaction.get(userRef);
-        if (!userSnap.exists()) throw new Error("User account not found.");
-        const earned = userSnap.data().wallet?.earned ?? 0;
-
-        transaction.update(userRef, { "wallet.earned": earned + amount });
-        transaction.update(txRef, {
-          status: "rejected",
-          resolutionNote: note || null,
-          resolvedAt: serverTimestamp()
-        });
-
-        const refundRef = doc(collection(db, "users", uid, "transactions"));
-        transaction.set(refundRef, {
-          type: "refund",
-          direction: "credit",
-          title: "Withdrawal rejected — refunded to Earned Balance",
-          amount,
-          status: "successful",
-          createdAt: serverTimestamp()
-        });
-      });
-      showToast("Withdrawal rejected — the user has been refunded.");
-    }
-
-    animateOutAndRemove(cardEl);
-    withdrawState.count = Math.max(0, withdrawState.count - 1);
-  } catch (err) {
-    console.error("Resolve withdrawal error:", err);
-    showToast(err.message || "Couldn't update this withdrawal. Please try again.", "error");
-  } finally {
-    btnEl.classList.remove("loading");
-    btnEl.disabled = false;
-  }
+  legendEl.innerHTML = rows.map((r) => {
+    const pct = (r.amount / total) * 100;
+    return `
+      <div class="legend-row">
+        <span class="legend-dot" style="background:${r.meta.color}"></span>
+        <span class="legend-label">${escapeHtml(r.meta.label)}</span>
+        <span class="legend-count">${formatNaira(r.amount)}</span>
+        <span class="legend-pct">${pct.toFixed(1)}%</span>
+      </div>
+    `;
+  }).join("");
 }
 
 /* ===========================================================
-   TRANSACTIONS TAB — platform ledger (read-only)
-   Reads a dedicated top-level `platformLedger` collection. This
-   is new infrastructure this page introduces — see the NOTES
-   block at the bottom for what else needs to start writing to it.
+   TAB 3 — REVENUE HISTORY
    =========================================================== */
-const ledgerState = { lastDoc: null, hasMore: true, isLoading: false, count: 0 };
+const historyState = { lastDoc: null, hasMore: true, isLoading: false, count: 0 };
 
-async function loadLedger(reset = false) {
-  if (ledgerState.isLoading) return;
+function renderRevenueItem(entry) {
+  const meta = categoryMeta(entry.category);
+  const description = entry.source?.username
+    ? "@" + entry.source.username
+    : (entry.source?.name || "TaskNOVA System");
+
+  const el = document.createElement("div");
+  el.className = "rev-item";
+  el.innerHTML = `
+    <div class="ri-row1"><span class="ri-source"><i class="bx ${meta.icon}"></i> ${escapeHtml(meta.label)}</span></div>
+    <div class="ri-row2"><span class="ri-desc">${escapeHtml(description)}</span><span class="ri-amount">+${formatNaira(entry.amount)}</span></div>
+    <div class="ri-row3"><span class="ri-date">${formatLongDate(entry.createdAt)}</span></div>
+  `;
+  return el;
+}
+
+async function loadHistory(reset = false) {
+  if (historyState.isLoading) return;
+  const listEl = document.getElementById("listHistory");
+  const emptyEl = document.getElementById("emptyHistory");
+  const loadMoreBtn = document.getElementById("loadMoreHistory");
+  const metaEl = document.getElementById("metaHistory");
+
   if (reset) {
-    Object.assign(ledgerState, { lastDoc: null, hasMore: true, isLoading: false, count: 0 });
-    document.getElementById("listTransactions").innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
-    document.getElementById("emptyTransactions").style.display = "none";
+    Object.assign(historyState, { lastDoc: null, hasMore: true, isLoading: false, count: 0 });
+    listEl.innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
+    emptyEl.style.display = "none";
   }
-  if (!ledgerState.hasMore) return;
+  if (!historyState.hasMore) return;
 
-  ledgerState.isLoading = true;
-  const loadMoreBtn = document.getElementById("loadMoreTransactions");
+  historyState.isLoading = true;
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
   try {
     const constraints = [orderBy("createdAt", "desc")];
-    if (ledgerState.lastDoc) constraints.push(startAfter(ledgerState.lastDoc));
+    if (historyState.lastDoc) constraints.push(startAfter(historyState.lastDoc));
     constraints.push(limit(PAGE_SIZE));
 
     const snap = await getDocs(query(collection(db, "platformLedger"), ...constraints));
-    const listEl = document.getElementById("listTransactions");
     if (reset) listEl.innerHTML = "";
 
-    if (snap.empty && ledgerState.count === 0) {
-      document.getElementById("emptyTransactions").style.display = "flex";
-      document.getElementById("metaTransactions").textContent = "No ledger entries yet.";
-      ledgerState.hasMore = false;
+    if (snap.empty && historyState.count === 0) {
+      emptyEl.style.display = "flex";
+      metaEl.textContent = "No revenue recorded yet.";
+      historyState.hasMore = false;
       loadMoreBtn.style.display = "none";
       return;
     }
 
-    snap.docs.forEach((docSnap) => listEl.appendChild(renderLedgerCard(docSnap.data())));
+    snap.docs.forEach((d) => listEl.appendChild(renderRevenueItem(d.data())));
 
-    ledgerState.count += snap.docs.length;
-    ledgerState.lastDoc = snap.docs[snap.docs.length - 1] || ledgerState.lastDoc;
-    ledgerState.hasMore = snap.docs.length === PAGE_SIZE;
-    loadMoreBtn.style.display = ledgerState.hasMore ? "inline-flex" : "none";
-    document.getElementById("metaTransactions").textContent = `${ledgerState.count} entr${ledgerState.count === 1 ? "y" : "ies"} loaded`;
+    historyState.count += snap.docs.length;
+    historyState.lastDoc = snap.docs[snap.docs.length - 1] || historyState.lastDoc;
+    historyState.hasMore = snap.docs.length === PAGE_SIZE;
+    loadMoreBtn.style.display = historyState.hasMore ? "inline-flex" : "none";
+    metaEl.textContent = `${historyState.count} record${historyState.count === 1 ? "" : "s"} loaded`;
   } catch (err) {
-    console.error("Load ledger error:", err);
-    showToast("Couldn't load the ledger. Please try again.", "error");
+    console.error("Load revenue history error:", err);
+    showToast("Couldn't load revenue history. Please try again.", "error");
   } finally {
-    ledgerState.isLoading = false;
+    historyState.isLoading = false;
     loadMoreBtn.classList.remove("loading");
     loadMoreBtn.disabled = false;
   }
 }
-document.getElementById("loadMoreTransactions")?.addEventListener("click", () => loadLedger(false));
-
-const CATEGORY_LABELS = {
-  task_fee: "Task Fee", ad_revenue: "Ad Revenue", banner_revenue: "Banner Revenue",
-  manual_deposit: "Manual Deposit Fee", other: "Other"
-};
-
-function renderLedgerCard(entry) {
-  const card = document.createElement("div");
-  card.className = "task-card";
-  card.innerHTML = `
-    <div class="tc-head">
-      <div class="tc-title-wrap">
-        <div class="tc-title">${escapeHtml(entry.reason || "Ledger entry")}</div>
-      </div>
-      <div class="tc-amount">${formatNaira(entry.amount)}</div>
-    </div>
-    <div class="tc-tags">
-      <span class="tc-tag category">${escapeHtml(CATEGORY_LABELS[entry.category] || entry.category || "Other")}</span>
-    </div>
-    <div class="ledger-flow">
-      <span class="lf-node">${escapeHtml(entry.source?.name || "—")}</span>
-      <i class="bx bx-right-arrow-alt"></i>
-      <span class="lf-node">${escapeHtml(entry.reason || "—")}</span>
-      <i class="bx bx-right-arrow-alt"></i>
-      <span class="lf-node">${escapeHtml(entry.destination?.name || "TaskNOVA Revenue")}</span>
-    </div>
-    <div class="tc-date">${formatDate(entry.createdAt)}</div>
-  `;
-  return card;
-}
-
-/* ===========================================================
-   REVENUE TAB — sums from platformLedger by category
-   =========================================================== */
-let revenueLoaded = false;
-
-async function loadRevenue() {
-  if (revenueLoaded) return;
-  revenueLoaded = true;
-  document.getElementById("metaRevenue").textContent = "Loading revenue totals…";
-
-  try {
-    const results = await Promise.all(
-      REVENUE_CATEGORIES.map((cat) =>
-        getAggregateFromServer(
-          query(collection(db, "platformLedger"), where("category", "==", cat.key)),
-          { total: sum("amount") }
-        )
-      )
-    );
-
-    const totals = REVENUE_CATEGORIES.map((cat, i) => ({ ...cat, total: results[i].data().total || 0 }));
-    const grandTotal = totals.reduce((sumSoFar, t) => sumSoFar + t.total, 0);
-
-    document.getElementById("revenueTotalValue").textContent = formatNaira(grandTotal);
-
-    const barEl = document.getElementById("revenueBar");
-    barEl.innerHTML = "";
-
-    totals.forEach((t) => {
-      const pct = grandTotal > 0 ? (t.total / grandTotal) * 100 : 0;
-      document.getElementById(t.valueEl).textContent = formatNaira(t.total);
-      document.getElementById(t.pctEl).textContent = `${pct.toFixed(1)}%`;
-      if (pct > 0) {
-        const seg = document.createElement("div");
-        seg.className = `revenue-bar-seg ${t.key}`;
-        seg.style.width = `${pct}%`;
-        barEl.appendChild(seg);
-      }
-    });
-
-    document.getElementById("metaRevenue").textContent = grandTotal > 0
-      ? "Totals across every recorded ledger entry."
-      : "No revenue recorded in the ledger yet.";
-  } catch (err) {
-    console.error("Load revenue error:", err);
-    document.getElementById("metaRevenue").textContent = "Couldn't load revenue totals.";
-    showToast("Couldn't load revenue totals.", "error");
-    revenueLoaded = false;
-  }
-}
-
-/* ---------------------------------------------------------
-   UI HELPERS
-   --------------------------------------------------------- */
-function animateOutAndRemove(cardEl) {
-  cardEl.style.transition = "opacity .3s ease, transform .3s ease";
-  cardEl.style.opacity = "0";
-  cardEl.style.transform = "translateX(12px)";
-  setTimeout(() => cardEl.remove(), 300);
-}
-
-/* ---------------------------------------------------------
-   TAB BADGE COUNT (Withdrawals needing attention)
-   --------------------------------------------------------- */
-async function loadCounts() {
-  try {
-    const snap = await getCountFromServer(
-      query(collectionGroup(db, "transactions"), where("type", "==", "withdrawal"), where("status", "in", ["pending", "processing"]))
-    );
-    document.getElementById("countWithdrawals").textContent = snap.data().count;
-  } catch (err) {
-    console.error("Load withdrawal count error:", err);
-  }
-}
+document.getElementById("loadMoreHistory")?.addEventListener("click", () => loadHistory(false));
 
 /* ---------------------------------------------------------
    AUTH GUARD
@@ -616,70 +622,80 @@ onAuthStateChanged(auth, async (user) => {
   } catch (err) {
     console.error("Load admin profile error:", err);
   }
-
-  loadCounts();
-  loadedTabs.add("withdrawals");
-  loadWithdrawals(true);
 });
 
 /* ===========================================================
    NOTES
    ===========================================================
-   - Admin identity read (users/{uid}) mirrors the same assumption
-     flagged on every other admin page — swap it if admins live
-     elsewhere.
+   1. Admin identity read (users/{uid}) mirrors every other admin
+      page's same assumption — no staffAccounts/{uid}.role gate is
+      applied here either, consistent with manual-transactions.js.
 
-   - Withdrawals reads across EVERY user's own transactions
-     subcollection via a collectionGroup query filtered to
-     type == "withdrawal", rather than a separate top-level
-     collection — that's the same doc wallet.js's requestWithdrawal
-     Cloud Function already writes and the user's own Transactions
-     page already reads, just queried across everyone. This needs a
-     Firestore composite index on the "transactions" collection
-     group for (type ==, status == or in, createdAt desc) —
-     Firestore will surface the exact index-creation link the first
-     time each filter combination runs in production.
+   2. Tab 1 (User Information) reads users/{uid} directly for
+      wallet.deposit / wallet.earned / lifetimeDeposited /
+      lifetimeEarned. lifetimeDeposited is confirmed real (bumped
+      by wallet.js's deposit verification and by admin/manual-
+      transactions.js's manual-deposit approval). lifetimeEarned is
+      still the same open ASSUMPTION flagged on user-details.js —
+      no page has been confirmed to actually bump it on a task
+      payout, so it may under-report until that's wired up.
 
-   - Withdrawal fee/net amount and bank details are read with
-     fallbacks (tx.fee / tx.bankName, etc., falling back to
-     tx.bank_name-style snake_case, then to a computed 5% fee) since
-     the actual Cloud Function that writes these transactions isn't
-     visible here — only the client-side request in wallet.js is.
-     Confirm the real field names the function writes and simplify
-     this once they're known.
+   3. Total Spent / Total Withdrawn have no running-counter field
+      anywhere, so this page sums them client-side from
+      users/{uid}/transactions (same lightweight approach wallet.js
+      itself already uses for its daily-withdrawal-limit check):
+        - Total Spent   = debit, status "successful", type
+          "task_post" or "ad_post" (covers ads AND banners — both
+          write type: "ad_post").
+        - Total Withdrawn = type "withdrawal", excluding "failed"/
+          "rejected" (same exclusion wallet.js's own limit check
+          uses).
+      The read is capped at the TX_SUM_CAP most recent transactions
+      (1,000) for one user — a note appears under the two figures
+      if a user actually has that many, since the true lifetime
+      total could run higher. Raise the cap, or move to a
+      maintained running counter, if that starts happening often.
 
-   - "Needs Attention" bundles pending + processing into one filter
-     (a withdrawal that's already "sent" can still be marked
-     resolved too, in case a transfer silently failed after
-     leaving Paystack — but it doesn't count toward the badge or
-     the default filter, only pending/processing do).
+   4. Tab 2/3 (Revenue + Revenue History) both read platformLedger,
+      which currently has exactly two writers:
+        - manual-transactions.js — category "manual_deposit", on
+          manual-deposit approval.
+        - post-advertisement.js — category "ad_revenue" or
+          "banner_revenue", on ad/banner purchase (100% of price,
+          since neither has a worker-payout portion to net out).
+      Two categories are defined in REVENUE_CATEGORIES but have no
+      writer yet, so they'll show ₦0 until wired up:
+        - "task_fee" — a task's platformFee only becomes real
+          revenue once a submission is approved and the worker is
+          paid; that approval flow isn't built yet (flagged in
+          post-task.js's own notes).
+        - "withdrawal_fee" — computed inside the requestWithdrawal
+          Edge Function (WITHDRAWAL_FEE_RATE = 5% in wallet.js),
+          which is server-side and outside any client file here.
+      Both just need the same ledger write added at the point the
+      revenue is actually realized.
 
-   - Mark Resolved offers two outcomes since the spec only said
-     "the only real admin action being Mark Resolved" without
-     specifying what resolving means: Mark Completed (transfer
-     genuinely went out — no wallet change) or Reject & Refund
-     (transfer failed — credits the gross `amount` back to
-     wallet.earned and logs a refund transaction). This is this
-     page's own reading of "resolved" — say the word if withdrawals
-     should resolve some other way.
+   5. Tab 2's Total Revenue, month-over-month growth, 6-month trend,
+      and category breakdown are all computed from one client-side
+      read of platformLedger (newest LEDGER_SCAN_CAP = 2,000
+      entries, no Cloud Function aggregation). A note appears under
+      the total if the ledger has grown past that cap, since the
+      real all-time total would then run higher — worth moving to a
+      scheduled aggregate doc (e.g. platformStats/summary) once
+      volume gets there instead of raising the cap indefinitely.
 
-   - Transactions tab reads a brand-new `platformLedger` collection
-     that nothing currently writes to — it's this page's proposed
-     schema for the "source → reason → destination" ledger the spec
-     asked for: { source: {uid,name} | null, reason: string,
-     destination: {uid,name} | null, amount, category: "task_fee" |
-     "ad_revenue" | "banner_revenue" | "manual_deposit" | "other",
-     createdAt }. For Revenue to ever show non-zero numbers, other
-     flows need to start writing to it: post-task.js at the moment
-     a task's platformFee is actually charged, post-advertisement.js
-     at ad/banner purchase, Manual Deposits' Approve action (the ₦20
-     manual-transfer fee difference, per wallet.js's own backend
-     notes), and any Reports & Support Force Pay action if that
-     should be tracked too. Dashboard's Total Profit card should
-     also be pointed at this same collection once it's live, so the
-     two pages never disagree.
+   6. The trend chart and donut reuse dashboard.css's own
+      .growth-chart (gc-line/gc-area/gc-dot) and .breakdown-donut/
+      .breakdown-legend classes verbatim, so Finance's charts match
+      the Dashboard's exactly rather than introducing a second
+      visual language. Both are hand-built (inline SVG path +
+      conic-gradient string) since no chart library is loaded
+      anywhere on the site.
 
-   - Revenue tab sums each category with a single
-     getAggregateFromServer(..., sum("amount")) call — five cheap
-     aggregate reads total, not a full collection scan.
+   7. Tab 1's live search does a prefix range query on `username`
+      (>= term, <= term+"\uf8ff", limit 6) exactly like Manual
+      Changes' type-ahead — same automatic-lowercase-as-you-type
+      requirement from the spec, same picklist UX. Selecting a
+      result uses the doc data already returned by that query (no
+      second read for the profile fields).
    =========================================================== */

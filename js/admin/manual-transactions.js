@@ -187,17 +187,17 @@ function formatBankDetails(bank) {
 
 const userCache = new Map();
 async function getUserSummary(uid) {
-  if (!uid) return { fullName: "Unknown user", accountType: "" };
+  if (!uid) return { fullName: "Unknown user", username: "", accountType: "" };
   if (userCache.has(uid)) return userCache.get(uid);
   try {
     const snap = await getDoc(doc(db, "users", uid));
     const summary = snap.exists()
-      ? { fullName: snap.data().fullName || "TaskNOVA User", accountType: snap.data().accountType || "" }
-      : { fullName: "Deleted user", accountType: "" };
+      ? { fullName: snap.data().fullName || "TaskNOVA User", username: snap.data().username || "", accountType: snap.data().accountType || "" }
+      : { fullName: "Deleted user", username: "", accountType: "" };
     userCache.set(uid, summary);
     return summary;
   } catch {
-    return { fullName: "Unknown user", accountType: "" };
+    return { fullName: "Unknown user", username: "", accountType: "" };
   }
 }
 
@@ -393,7 +393,7 @@ async function approveDeposit(depositId, deposit, fee, cardEl, btnEl) {
       if (fee > 0) {
         const ledgerRef = doc(collection(db, "platformLedger"));
         transaction.set(ledgerRef, {
-          source: { uid: deposit.uid, name: advertiser.fullName },
+          source: { uid: deposit.uid, name: advertiser.fullName, username: advertiser.username },
           reason: "Manual deposit fee",
           destination: { name: "TaskNOVA Revenue" },
           amount: fee,
@@ -896,10 +896,11 @@ onAuthStateChanged(auth, async (user) => {
    - Approve credits wallet.deposit by `amount` (not totalExpected,
      matching wallet.js's own note that the difference is a ₦20
      transfer fee that stays with TaskNOVA) and logs that fee to
-     platformLedger under category "manual_deposit" — this is the
-     first real writer to the ledger introduced on the Finance page,
-     so Finance's Revenue tab will start showing non-zero numbers
-     for this one category as soon as deposits get approved here.
+     platformLedger under category "manual_deposit" — one of two
+     writers to the ledger now (post-advertisement.js's ad/banner
+     purchase is the other). source.username is included alongside
+     source.name so Finance's Revenue History can show "@username"
+     per its spec, falling back to name for older/system entries.
 
    - Manual Changes' Increment/Decrement/Transfer intentionally do
      NOT write to platformLedger — these are wallet corrections,
