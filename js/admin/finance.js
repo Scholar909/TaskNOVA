@@ -2,7 +2,7 @@
    TASKNOVA ADMIN — FINANCE PAGE LOGIC
    Firebase v12.17.1 modular SDK
    ========================================================= */
-
+import { applyAccessRestrictions } from "./restricted.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import {
   getAuth,
@@ -608,6 +608,13 @@ const userAvatarEl = document.getElementById("menuUserAvatar");
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
+    return;
+  }
+
+  try {
+    await applyAccessRestrictions({ auth, isFullPage: true });
+  } catch (err) {
+    // Execution stopped for support user
     return;
   }
 
