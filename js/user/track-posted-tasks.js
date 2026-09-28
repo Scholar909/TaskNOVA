@@ -20,7 +20,6 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
@@ -311,6 +310,7 @@ function categoryMeta(key) {
 const STATUS_LABELS = {
   draft: "Draft",
   pending_review: "Pending",
+  edit_requests: "Edit Requests",
   active: "Active",
   declined: "Declined",
   completed: "Completed",
@@ -330,6 +330,12 @@ const nairaFormat = new Intl.NumberFormat("en-NG", {
 
 function formatNaira(amount) {
   return nairaFormat.format(Number(amount) || 0);
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
 
 function formatDate(ts) {
@@ -374,13 +380,13 @@ function ringSVG(filled, total, size = 40, stroke = 5) {
 const PAGE_SIZE = 10;
 
 let currentUser = null;
-let activeStatus = "pending_review";
+// ?tab=draft (from post-task.js's "Save as draft") opens Drafts directly.
+const VALID_TABS = ["draft", "pending_review", "edit_requests", "active", "declined", "completed", "expired"];
+const requestedTab = new URLSearchParams(window.location.search).get("tab");
+let activeStatus = VALID_TABS.includes(requestedTab) ? requestedTab : "pending_review";
 
-let taskDocsMap = new Map();
-let pageListeners = [];
-let lastVisibleDoc = null;
+let taskDocsMap = new Map(); // ALL of this employer's tasks, every status
 let hasMore = true;
-let isLoading = false;
 let openTaskId = null;
 let submissionsUnsub = null;
 
@@ -391,6 +397,7 @@ const taskList = document.getElementById("taskList");
 const loadMoreWrap = document.getElementById("loadMoreWrap");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
 const statusTabs = document.getElementById("statusTabs");
+statusTabs.querySelectorAll(".filter-chip").forEach((c) => c.classList.toggle("active", c.dataset.status === activeStatus));
 const toast = document.getElementById("toast");
 const toastText = document.getElementById("toastText");
 
@@ -404,17 +411,29 @@ function showToast(text, icon = "bx-check-circle") {
 /* ---------------------------------------------------------
    RENDER LIST
    --------------------------------------------------------- */
+// Which tab a task belongs to — the split that used to be a Firestore
+// where("status","==",...) is now a plain client-side check, since all
+// of the employer's tasks (every status) are already loaded together.
+function matchesTab(task, tab) {
+  if (tab === "pending_review") return task.status === "pending_review" && !task.isEditResubmission;
+  if (tab === "edit_requests") return task.status === "pending_review" && task.isEditResubmission === true;
+  return task.status === tab;
+}
+
 function sortedTasks() {
-  return Array.from(taskDocsMap.values()).sort((a, b) => {
-    const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-    const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-    return bt - at;
-  });
+  return Array.from(taskDocsMap.values())
+    .filter((t) => matchesTab(t, activeStatus))
+    .sort((a, b) => {
+      const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bt - at;
+    });
 }
 
 const EMPTY_MESSAGES = {
   draft: "No drafts saved.",
   pending_review: "Nothing waiting on admin review right now.",
+  edit_requests: "No edits awaiting re-approval.",
   active: "No active tasks right now.",
   declined: "No declined tasks.",
   completed: "No completed tasks yet.",
@@ -501,11 +520,14 @@ function renderTaskDetail(taskId) {
   const baseInfo = `
     <div class="td-section">
       <h3>Description</h3>
-      <p>${task.description || "—"}</p>
+      <p>${escapeHtml(task.description) || "—"}</p>
+    </div>
+    <div class="td-section">
+      <h3>Additional instructions</h3>
+      <p>${escapeHtml(task.instructions) || "—"}</p>
     </div>
     <div class="td-meta-row">
       <span class="td-tag"><i class="bx ${meta.icon}"></i> ${meta.label}</span>
-      ${task.location ? `<span class="td-tag"><i class="bx bx-map-pin"></i> ${task.location}</span>` : ""}
       ${task.urgent ? `<span class="td-tag"><i class="bx bx-bolt"></i> Urgent</span>` : ""}
     </div>
   `;
@@ -514,7 +536,7 @@ function renderTaskDetail(taskId) {
     container.innerHTML = `
       ${baseInfo}
       <div class="action-row">
-        <a class="action-btn primary" href="post-task.html?draft=${taskId}"><i class="bx bx-edit-alt"></i> Continue Editing</a>
+        <a class="action-btn primary" href="post-task.html?draft=${taskId}"><i class="bx bx-edit-alt"></i> Edit</a>
         <button type="button" class="action-btn danger" id="deleteBtn-${taskId}"><span class="action-spinner"></span><i class="bx bx-trash"></i> Delete Draft</button>
       </div>
     `;
@@ -525,7 +547,7 @@ function renderTaskDetail(taskId) {
   if (task.status === "pending_review") {
     container.innerHTML = `
       ${baseInfo}
-      <div class="status-info-note"><i class="bx bx-time-five"></i> Waiting for admin review — usually within a few hours.</div>
+      <div class="status-info-note"><i class="bx bx-time-five"></i> ${task.isEditResubmission ? "Your edits are waiting for admin re-approval — the task is off the Earn feed until then." : "Waiting for admin review — usually within a few hours."}</div>
       <div class="action-row">
         <button type="button" class="action-btn danger" id="deleteBtn-${taskId}"><span class="action-spinner"></span><i class="bx bx-trash"></i> Delete &amp; Refund</button>
       </div>
@@ -589,6 +611,7 @@ function renderTaskDetail(taskId) {
     ${baseInfo}
 
     <div class="action-row">
+      <a class="action-btn primary" href="post-task.html?editapproved=${taskId}"><i class="bx bx-edit-alt"></i> Edit</a>
       <button type="button" class="action-btn" id="hideBtn-${taskId}">
         <span class="action-spinner"></span>
         <i class="bx ${task.hidden ? "bx-show" : "bx-hide"}"></i> ${task.hidden ? "Unhide" : "Hide"}
@@ -602,7 +625,7 @@ function renderTaskDetail(taskId) {
         <i class="bx bx-trash"></i> Delete
       </button>
     </div>
-    <p class="refund-note">Deleting refunds unused slots only — slots already filled or paid out are non-refundable. Tasks left active for 30 days without completing all slots expire automatically and refund unused slots the same way.</p>
+    <p class="refund-note">Deleting refunds only the workers' share of unused slots — TaskNOVA's platform fee and slots already filled or paid out are non-refundable. Editing sends the task back for admin re-approval. Tasks left active for 30 days without completing all slots expire automatically and refund unused slots the same way.</p>
 
     <div class="td-section">
       <h3>Submissions awaiting approval</h3>
@@ -871,7 +894,7 @@ function wireDelete(taskId, hasRefund) {
     if (task.status === "pending_review") {
       refund = task.totalCost || 0;
     } else if (task.status === "active" || task.status === "completed") {
-      refund = Math.max(0, total - filled) * (task.amountPerWorker || 0);
+      refund = Math.max(0, total - filled) * (task.workerPayout ?? Math.max(0, (task.amountPerWorker || 0) - (task.platformFee || 0)));
     }
     // draft tasks were never charged, declined tasks were already refunded
     // in full at the moment admin declined them, and expired tasks were
@@ -899,18 +922,29 @@ function wireDelete(taskId, hasRefund) {
         if (data.status === "draft" || data.status === "declined") {
           refundAmount = 0; // declined tasks were already refunded in full at decline time
         } else if (data.status === "pending_review") {
-          refundAmount = data.totalCost || 0; // never went live — nothing was spent
+          refundAmount = data.totalCost || 0; // never went live — nothing was spent, refund everything
         } else if (data.status === "active" || data.status === "completed") {
+          // Only the workers' own share of each unfilled slot comes back;
+          // TaskNOVA's per-worker platform fee is never refundable.
           const remaining = Math.max(0, (data.workersRequired ?? 0) - (data.slotsFilled ?? 0));
-          refundAmount = remaining * (data.amountPerWorker || 0);
+          refundAmount = remaining * (data.workerPayout ?? Math.max(0, (data.amountPerWorker || 0) - (data.platformFee || 0)));
+        }
+
+        // Firestore transactions require every read to happen before the
+        // first write — the wallet read below used to come AFTER the task
+        // update, which made every refunding delete (pending/active) throw
+        // and roll back. Drafts (no refund, no wallet read) were unaffected,
+        // which is why only those appeared to work.
+        const userRef = doc(db, "users", currentUser.uid);
+        let deposit = 0;
+        if (refundAmount > 0) {
+          const userSnap = await transaction.get(userRef);
+          deposit = userSnap.data()?.wallet?.deposit ?? 0;
         }
 
         transaction.update(taskRef, { status: "deleted", hidden: true, deletedAt: serverTimestamp() });
 
         if (refundAmount > 0) {
-          const userRef = doc(db, "users", currentUser.uid);
-          const userSnap = await transaction.get(userRef);
-          const deposit = userSnap.data()?.wallet?.deposit ?? 0;
           transaction.update(userRef, { "wallet.deposit": deposit + refundAmount });
 
           const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
@@ -941,77 +975,63 @@ function wireDelete(taskId, hasRefund) {
 /* ---------------------------------------------------------
    LIVE PAGINATED LIST (per status tab, employer's own tasks only)
    --------------------------------------------------------- */
-function subscribeNextPage() {
-  if (!currentUser || !hasMore || isLoading) return;
-  isLoading = true;
+/* ---------------------------------------------------------
+   ONE LISTENER FOR THE WHOLE PAGE
+   Every tab (Draft/Pending/Edit Requests/Active/Declined/
+   Completed/Expired) is a client-side filter over the SAME
+   onSnapshot — a single where("employerUid","==",...) query,
+   no status filter — instead of a separate query+index per tab.
+   Switching tabs is instant (just a re-filter of what's already
+   loaded); "Load more" grows the one shared `limit` and
+   re-subscribes. See NOTES for the trade-off this implies.
+   --------------------------------------------------------- */
+let pageSize = PAGE_SIZE;
+let tasksUnsub = null;
+
+function subscribeAll() {
+  if (!currentUser) return;
+  if (tasksUnsub) tasksUnsub();
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
-  const constraints = [
+  const q = query(
+    collection(db, "tasks"),
     where("employerUid", "==", currentUser.uid),
-    where("status", "==", activeStatus),
-    orderBy("createdAt", "desc")
-  ];
-  if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
-  constraints.push(limit(PAGE_SIZE));
+    orderBy("createdAt", "desc"),
+    limit(pageSize)
+  );
 
-  const q = query(collection(db, "tasks"), ...constraints);
-  let firstFire = true;
+  tasksUnsub = onSnapshot(q, (snap) => {
+    taskDocsMap = new Map();
+    snap.docs.forEach((d) => taskDocsMap.set(d.id, { id: d.id, ...d.data() }));
+    hasMore = snap.docs.length === pageSize;
 
-  const unsub = onSnapshot(q, (snap) => {
-    if (firstFire) {
-      firstFire = false;
-      isLoading = false;
-      loadMoreBtn.classList.remove("loading");
-      loadMoreBtn.disabled = false;
-
-      if (snap.empty) {
-        hasMore = false;
-      } else {
-        lastVisibleDoc = snap.docs[snap.docs.length - 1];
-        hasMore = snap.docs.length === PAGE_SIZE;
-      }
+    if (openTaskId && !taskDocsMap.has(openTaskId)) {
+      openTaskId = null;
+      if (submissionsUnsub) { submissionsUnsub(); submissionsUnsub = null; }
     }
 
-    snap.docChanges().forEach((change) => {
-      if (change.type === "removed") {
-        taskDocsMap.delete(change.doc.id);
-        if (openTaskId === change.doc.id) openTaskId = null;
-      } else {
-        taskDocsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() });
-      }
-    });
-
     render();
-
     // Keep an already-open task's detail fresh (e.g. slotsFilled changing
     // live while an employer is looking at it) without collapsing it.
     if (openTaskId && document.getElementById(`detail-${openTaskId}`)) {
       renderTaskDetail(openTaskId);
     }
+
+    loadMoreBtn.classList.remove("loading");
+    loadMoreBtn.disabled = false;
   }, (err) => {
     console.error("Track posted tasks listener error:", err);
-    isLoading = false;
+    showToast("Couldn't load your tasks.", "bx-error-circle");
     loadMoreBtn.classList.remove("loading");
     loadMoreBtn.disabled = false;
   });
-
-  pageListeners.push(unsub);
 }
 
-function resetFeed() {
-  pageListeners.forEach((unsub) => unsub());
-  pageListeners = [];
-  if (submissionsUnsub) { submissionsUnsub(); submissionsUnsub = null; }
-  taskDocsMap = new Map();
-  lastVisibleDoc = null;
-  hasMore = true;
-  openTaskId = null;
-  taskList.innerHTML = `<div class="task-skeleton"></div><div class="task-skeleton"></div><div class="task-skeleton"></div>`;
-  subscribeNextPage();
-}
-
-loadMoreBtn.addEventListener("click", subscribeNextPage);
+loadMoreBtn.addEventListener("click", () => {
+  pageSize += PAGE_SIZE;
+  subscribeAll();
+});
 
 statusTabs.addEventListener("click", (e) => {
   const chip = e.target.closest(".filter-chip");
@@ -1019,7 +1039,9 @@ statusTabs.addEventListener("click", (e) => {
   statusTabs.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
   chip.classList.add("active");
   activeStatus = chip.dataset.status;
-  resetFeed();
+  openTaskId = null;
+  if (submissionsUnsub) { submissionsUnsub(); submissionsUnsub = null; }
+  render();
 });
 
 /* ---------------------------------------------------------
@@ -1056,7 +1078,9 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide — show the
+    // username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
   }, (err) => {
     console.error("User doc listener error:", err);
@@ -1074,7 +1098,7 @@ onAuthStateChanged(auth, (user) => {
     console.error("Alert dot listener error:", err);
   });
 
-  subscribeNextPage();
+  subscribeAll();
 });
 
 /* ===========================================================
@@ -1139,4 +1163,39 @@ onAuthStateChanged(auth, (user) => {
      this page afterward does NOT refund again (it was already
      refunded at the moment it expired); delete here is just
      cleanup.
+
+   - CHANGES THIS PASS
+       * One onSnapshot for the whole page: a single
+         where("employerUid","==",uid) + orderBy(createdAt) query
+         feeds every tab; tabs are client-side filters
+         (matchesTab). Tab switches are instant and only one
+         composite index (employerUid + createdAt) is needed. The
+         trade-off: "Load more" grows one shared window across all
+         statuses, so on a sparse tab it can reveal nothing new
+         until more of the employer's other tasks load too.
+       * Edit Requests tab = pending_review + isEditResubmission
+         === true (set by post-task.js ?editapproved=). Filtering
+         in JS rather than Firestore is deliberate — older docs
+         have no isEditResubmission field, and a Firestore
+         where(...,"==",false) would silently exclude them.
+       * Active tasks now have Edit (-> post-task.html?editapproved=
+         ID); Drafts' button reads "Edit" instead of "Continue
+         Editing"; every tab's detail shows Additional
+         instructions (description/instructions are now HTML-
+         escaped too); location tag removed; header shows @username.
+       * DELETE + REFUND BUG (root cause): the transaction wrote to
+         the task doc and only then read the user's wallet.
+         Firestore requires all reads before any write, so every
+         refunding delete (Pending, Active) threw and rolled back,
+         while Drafts (no wallet read) worked. Reads now come first.
+       * Refund on deleting an approved task is now only the
+         workers' share — (workersRequired - slotsFilled) *
+         workerPayout — never the platform fee. Pending still
+         refunds totalCost in full; declined/expired/draft refund
+         nothing here (already handled elsewhere / never charged).
+       * Open question: admin's Decline refunds the full totalCost.
+         For an edited-approved task that already had filled slots,
+         that would refund money already paid out to workers.
+         Consider capping that refund to unfilled slots'
+         workerPayout when isEditResubmission is true.
    =========================================================== */

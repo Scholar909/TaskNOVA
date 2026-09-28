@@ -18,6 +18,8 @@ import {
   where,
   limit,
   addDoc,
+  getDoc,
+  updateDoc,
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
@@ -35,6 +37,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// Cloudinary Configuration
+const CLOUDINARY_CLOUD_NAME = "tgohela8";
+const CLOUDINARY_UPLOAD_PRESET = "tasknova uploads";
+const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
@@ -276,6 +283,56 @@ supportFab?.addEventListener("click", (e) => {
 });
 
 /* ---------------------------------------------------------
+   EMAILJS — admin alert on new task post
+   Same account/mechanism as request-task.js's admin alert — see
+   that file for the full rationale. A different template is used
+   here since the fields differ (task details vs. a free-form
+   request).
+   --------------------------------------------------------- */
+const EMAILJS_SERVICE_ID = "service_9rc53vl";
+const EMAILJS_TASK_TEMPLATE_ID = "template_task_posted";
+// TODO: same as request-task.js — this is EmailJS's public key
+// (Account -> API Keys); every emailjs.send() call below will fail
+// (visibly in the console, silently to the user, by design) until
+// it's confirmed as the same or a different key from that page.
+const EMAILJS_PUBLIC_KEY = "U1tt86J8H_-S_0QfH";
+
+(function loadEmailJs() {
+  if (window.emailjs || document.querySelector("script[data-emailjs]")) return;
+  const script = document.createElement("script");
+  script.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
+  script.dataset.emailjs = "true";
+  script.async = true;
+  document.head.appendChild(script);
+})();
+
+// Best-effort only — a failed email never blocks or fails the task
+// post itself, since the Firestore write (already committed by the
+// time this runs) is the real record admin/tasks.html's Pending tab
+// reads.
+async function sendAdminTaskPostedAlert(taskData, employerInfo) {
+  try {
+    if (!window.emailjs) {
+      console.warn("EmailJS script not loaded yet — skipping admin alert email.");
+      return;
+    }
+    await window.emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TASK_TEMPLATE_ID, {
+      employer_name: employerInfo.fullName || "A TaskNOVA user",
+      employer_username: employerInfo.username || "",
+      employer_email: employerInfo.email || "",
+      task_title: taskData.title,
+      category: taskData.categoryLabel || taskData.category || "",
+      workers_required: String(taskData.workersRequired),
+      amount_per_worker: String(taskData.amountPerWorker),
+      total_cost: String(taskData.totalCost),
+      urgent: taskData.urgent ? "Yes" : "No"
+    }, { publicKey: EMAILJS_PUBLIC_KEY });
+  } catch (err) {
+    console.error("EmailJS admin alert failed (task was still posted):", err);
+  }
+}
+
+/* ---------------------------------------------------------
    TASK CATALOG — curated set, no fake-engagement tasks, no
    duplicates. Worker/platform split stays internal for backend
    bookkeeping; the UI only ever shows the combined total.
@@ -498,6 +555,11 @@ const nairaFormat = new Intl.NumberFormat("en-NG", {
 function formatNaira(amount) {
   return nairaFormat.format(Number(amount) || 0);
 }
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
 
 /* ---------------------------------------------------------
    DOM REFS — category / task selection
@@ -514,7 +576,6 @@ const proofListEl = document.getElementById("proofList");
 const amountPerWorkerInput = document.getElementById("amountPerWorker");
 const amountFloorNote = document.getElementById("amountFloorNote");
 const workersRequiredInput = document.getElementById("workersRequired");
-const taskLocationSelect = document.getElementById("taskLocation");
 
 retentionClausePreview.textContent = RETENTION_CLAUSE;
 
@@ -567,19 +628,20 @@ subcategorySelect.addEventListener("change", () => {
 /* ---------------------------------------------------------
    PROOF LIST + SCREENSHOT TOGGLE/STEPPER
    --------------------------------------------------------- */
-function renderProofList(proofKey) {
-  const items = PROOF_SETS[proofKey] || PROOF_SETS.confirm;
-  proofListEl.innerHTML = items.map((text) =>
-    `<li><i class="bx bx-check-circle"></i><span>${text}</span></li>`
-  ).join("");
-}
-renderProofList("confirm");
-
 const screenshotSwitch = document.getElementById("screenshotSwitch");
 const screenshotStepperRow = document.getElementById("screenshotStepperRow");
 const screenshotMinus = document.getElementById("screenshotMinus");
 const screenshotPlus = document.getElementById("screenshotPlus");
 const screenshotCountEl = document.getElementById("screenshotCount");
+const screenshotExampleRow = document.getElementById("screenshotExampleRow");
+
+function renderProofList(proofKey) {
+  const items = PROOF_SETS[proofKey] || PROOF_SETS.confirm;
+  proofListEl.innerHTML = items.map((text) =>
+    `<li><i class="bx bx-check-circle"></i><span>${text}</span></li>`
+  ).join("");
+  syncScreenshotProofLine();
+}
 
 let screenshotCount = 1;
 const SCREENSHOT_MAX = 3;
@@ -589,13 +651,31 @@ function updateScreenshotStepper() {
   screenshotCountEl.textContent = String(screenshotCount);
   screenshotMinus.disabled = screenshotCount <= SCREENSHOT_MIN;
   screenshotPlus.disabled = screenshotCount >= SCREENSHOT_MAX;
+  syncScreenshotProofLine();
 }
+
+function syncScreenshotProofLine() {
+  proofListEl.querySelector("li[data-screenshot-line]")?.remove();
+  const required = screenshotSwitch?.getAttribute("aria-checked") === "true";
+  if (required) {
+    const li = document.createElement("li");
+    li.dataset.screenshotLine = "true";
+    li.innerHTML = `<i class="bx bx-image"></i><span>Screenshot proof required (${screenshotCount})</span>`;
+    proofListEl.appendChild(li);
+  }
+}
+
+// Initial renders after variable declarations
+renderProofList("confirm");
 updateScreenshotStepper();
 
 screenshotSwitch.addEventListener("click", () => {
   const next = screenshotSwitch.getAttribute("aria-checked") !== "true";
   screenshotSwitch.setAttribute("aria-checked", String(next));
   screenshotStepperRow.classList.toggle("disabled", !next);
+  screenshotExampleRow.style.display = next ? "" : "none";
+  if (!next) clearExampleScreenshots(); // switching off drops any uploaded examples too
+  syncScreenshotProofLine();
 });
 
 screenshotMinus.addEventListener("click", () => {
@@ -603,6 +683,66 @@ screenshotMinus.addEventListener("click", () => {
 });
 screenshotPlus.addEventListener("click", () => {
   if (screenshotCount < SCREENSHOT_MAX) { screenshotCount++; updateScreenshotStepper(); }
+});
+
+/* ---------------------------------------------------------
+   OPTIONAL EXAMPLE SCREENSHOT UPLOAD (Cloudinary)
+   --------------------------------------------------------- */
+const exampleScreenshotInput = document.getElementById("exampleScreenshotInput");
+const exampleScreenshotList = document.getElementById("exampleScreenshotList");
+let exampleScreenshots = []; // [{ url, name }]
+
+function renderExampleScreenshots() {
+  exampleScreenshotList.innerHTML = exampleScreenshots.map((ex, idx) => `
+    <li>
+      <img src="${ex.url}" alt="">
+      <span>${ex.name}</span>
+      <button type="button" data-idx="${idx}" aria-label="Remove"><i class="bx bx-x"></i></button>
+    </li>
+  `).join("");
+  exampleScreenshotList.querySelectorAll("button[data-idx]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      exampleScreenshots.splice(idx, 1);
+      renderExampleScreenshots();
+    });
+  });
+}
+
+function clearExampleScreenshots() {
+  exampleScreenshots = [];
+  renderExampleScreenshots();
+}
+
+exampleScreenshotInput?.addEventListener("change", async () => {
+  const files = Array.from(exampleScreenshotInput.files || []);
+  exampleScreenshotInput.value = "";
+  for (const file of files) {
+    if (exampleScreenshots.length >= SCREENSHOT_MAX) break;
+    if (!file.type.startsWith("image/")) continue;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+
+    try {
+      const response = await fetch(CLOUDINARY_UPLOAD_URL, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error("Cloudinary upload failed");
+      }
+
+      const data = await response.json();
+      exampleScreenshots.push({ url: data.secure_url, name: file.name });
+      renderExampleScreenshots();
+    } catch (err) {
+      console.error("Example screenshot Cloudinary upload error:", err);
+      showMsg("error", "Couldn't upload one of your example screenshots. Please try again.");
+    }
+  }
 });
 
 /* ---------------------------------------------------------
@@ -621,11 +761,12 @@ amountPerWorkerInput.addEventListener("blur", () => {
    WORKERS REQUIRED — auto-corrects to minimum of 5
    --------------------------------------------------------- */
 const WORKERS_MIN = 5;
+let workersFloor = WORKERS_MIN;
 
 function clampWorkers() {
   const val = Number(workersRequiredInput.value);
-  if (!val || val < WORKERS_MIN) {
-    workersRequiredInput.value = WORKERS_MIN;
+  if (!val || val < workersFloor) {
+    workersRequiredInput.value = workersFloor;
   }
   updateCostSummary();
 }
@@ -671,7 +812,7 @@ const balanceRow = document.querySelector(".balance-row");
 
 function updateCostSummary() {
   const perWorker = Number(amountPerWorkerInput.value) || 0;
-  const workers = Math.max(WORKERS_MIN, Number(workersRequiredInput.value) || WORKERS_MIN);
+  const workers = Math.max(workersFloor, Number(workersRequiredInput.value) || workersFloor);
   const urgent = urgentSwitch.getAttribute("aria-checked") === "true";
   const urgentFee = urgent ? Math.max(URGENT_BASE, Number(urgentAmountInput.value) || URGENT_BASE) : 0;
 
@@ -718,13 +859,13 @@ function buildTaskData(status) {
     proofRequirements: PROOF_SETS[proof] || PROOF_SETS.confirm,
     screenshotRequired,
     screenshotCount: screenshotRequired ? screenshotCount : 0,
+    exampleScreenshots: screenshotRequired ? exampleScreenshots.map((ex) => ex.url) : [],
     amountPerWorker: perWorker,
     workerPayout,
     platformFee,
     workersRequired: workers,
     slotsFilled: 0,
     full: false,
-    location: taskLocationSelect.value,
     urgent,
     urgentFee,
     totalCost: grandTotal,
@@ -740,7 +881,7 @@ function validateForm() {
   if (!descriptionInput.value.trim()) return "Add a short description.";
   if (!taskLinkInput.value.trim() || !/^https?:\/\//i.test(taskLinkInput.value.trim())) return "Add a valid task link starting with http:// or https://";
   if (!amountPerWorkerInput.value || Number(amountPerWorkerInput.value) < (selectedPreset?.floor || 0)) return "Amount per worker looks off — please recheck.";
-  if (Number(workersRequiredInput.value) < WORKERS_MIN) return `Minimum ${WORKERS_MIN} workers required.`;
+  if (Number(workersRequiredInput.value) < workersFloor) return `Minimum ${workersFloor} worker${workersFloor === 1 ? "" : "s"} required${workersFloor > WORKERS_MIN ? " (slots already filled can't be reduced)" : ""}.`;
   return null;
 }
 
@@ -756,6 +897,7 @@ const saveDraftBtn = document.getElementById("saveDraftBtn");
 
 let currentUser = null;
 let currentDepositBalance = 0;
+let currentUserData = { fullName: "", username: "", email: "" };
 
 function showMsg(type, text) {
   wizardMsg.className = "panel-msg show " + type;
@@ -776,11 +918,20 @@ postTaskForm.addEventListener("submit", async (e) => {
   if (!currentUser) return;
 
   const { grandTotal } = updateCostSummary();
+  // Editing an already-charged task (mode "edit"/"editapproved") only
+  // charges/refunds the *difference* from what was paid when it was
+  // first posted. A draft has a totalCost field too (buildTaskData
+  // always computes one) but was never actually charged, so treat it
+  // — like a brand-new post — as having nothing paid yet.
+  const alreadyCharged = editContext && editContext.mode !== "draft";
+  const previousTotal = alreadyCharged ? (editContext.original.totalCost || 0) : 0;
+  const delta = grandTotal - previousTotal;
 
-  if (grandTotal > currentDepositBalance) {
+  if (delta > currentDepositBalance) {
     wizardSubmitBtn.classList.add("shake");
     setTimeout(() => wizardSubmitBtn.classList.remove("shake"), 400);
-    showMsg("error", `Your Deposit Balance (${formatNaira(currentDepositBalance)}) is lower than the total (${formatNaira(grandTotal)}). Please deposit more, or save this as a draft for now.`);
+    const need = alreadyCharged ? `the extra ${formatNaira(delta)}` : formatNaira(grandTotal);
+    showMsg("error", `Your Deposit Balance (${formatNaira(currentDepositBalance)}) can't cover ${need}. Please deposit more, or save this as a draft for now.`);
     return;
   }
 
@@ -789,31 +940,71 @@ postTaskForm.addEventListener("submit", async (e) => {
 
   try {
     const userRef = doc(db, "users", currentUser.uid);
-    const taskRef = doc(collection(db, "tasks"));
     const taskData = buildTaskData("pending_review");
 
-    await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(userRef);
-      if (!snap.exists()) throw new Error("Account not found.");
+    if (alreadyCharged) {
+      const taskRef = doc(db, "tasks", editContext.taskId);
+      const preserved = {};
+      if (editContext.mode === "editapproved") {
+        taskData.isEditResubmission = true;
+        preserved.slotsFilled = editContext.original.slotsFilled || 0;
+      }
 
-      const deposit = snap.data().wallet?.deposit ?? 0;
-      if (taskData.totalCost > deposit) throw new Error("Your Deposit Balance is too low to post this task.");
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        if (!snap.exists()) throw new Error("Account not found.");
+        const deposit = snap.data().wallet?.deposit ?? 0;
+        if (delta > deposit) throw new Error("Your Deposit Balance is too low to cover this change.");
 
-      transaction.update(userRef, { "wallet.deposit": deposit - taskData.totalCost });
-      transaction.set(taskRef, taskData);
-
-      const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
-      transaction.set(txRef, {
-        type: "task_post",
-        direction: "debit",
-        title: `Posted task: ${taskData.title}`,
-        amount: taskData.totalCost,
-        status: "successful",
-        createdAt: serverTimestamp()
+        if (delta !== 0) {
+          transaction.update(userRef, { "wallet.deposit": deposit - delta });
+          const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
+          transaction.set(txRef, {
+            type: "task_post",
+            direction: delta > 0 ? "debit" : "credit",
+            title: `${delta > 0 ? "Additional charge" : "Refund"} — edited task: ${taskData.title}`,
+            amount: Math.abs(delta),
+            status: "successful",
+            createdAt: serverTimestamp()
+          });
+        }
+        transaction.update(taskRef, { ...taskData, ...preserved });
       });
-    });
 
-    showMsg("success", "Task posted! It'll appear on the Earn feed once approved — usually within a few hours.");
+      sendAdminTaskPostedAlert(taskData, currentUserData);
+      showMsg("success", editContext.mode === "editapproved"
+        ? "Changes submitted — this task is back in admin review and off the Earn feed until it's re-approved."
+        : "Task updated and resubmitted for review.");
+    } else {
+      // Brand-new task, or a draft's first real submission (updates
+      // the draft's existing doc instead of creating a second one).
+      const taskRef = editContext ? doc(db, "tasks", editContext.taskId) : doc(collection(db, "tasks"));
+
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        if (!snap.exists()) throw new Error("Account not found.");
+
+        const deposit = snap.data().wallet?.deposit ?? 0;
+        if (taskData.totalCost > deposit) throw new Error("Your Deposit Balance is too low to post this task.");
+
+        transaction.update(userRef, { "wallet.deposit": deposit - taskData.totalCost });
+        transaction.set(taskRef, taskData);
+
+        const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
+        transaction.set(txRef, {
+          type: "task_post",
+          direction: "debit",
+          title: `Posted task: ${taskData.title}`,
+          amount: taskData.totalCost,
+          status: "successful",
+          createdAt: serverTimestamp()
+        });
+      });
+
+      sendAdminTaskPostedAlert(taskData, currentUserData);
+      showMsg("success", "Task posted! It'll appear on the Earn feed once approved — usually within a few hours.");
+    }
+
     setTimeout(() => { window.location.href = "track-posted-tasks.html"; }, 1800);
   } catch (err) {
     console.error("Post task error:", err);
@@ -827,6 +1018,14 @@ postTaskForm.addEventListener("submit", async (e) => {
 /* ---------------------------------------------------------
    SAVE AS DRAFT — no wallet deduction, just stores the form so
    they can come back and finish once they've deposited enough.
+   If we're already editing an existing doc (draft/declined/
+   approved), this updates that same doc rather than creating a
+   second one — "edit and repost... so it can be posted again or
+   saved as draft" applies here too. Note: saving an *approved*
+   task's edits as a draft would pull it off the Earn feed (status
+   becomes "draft") without the usual pending-review step in
+   between — acceptable since it's an explicit, deliberate choice
+   here, not an accidental side effect.
    --------------------------------------------------------- */
 saveDraftBtn.addEventListener("click", async () => {
   clearMsg();
@@ -838,8 +1037,18 @@ saveDraftBtn.addEventListener("click", async () => {
 
   try {
     const taskData = buildTaskData("draft");
-    await addDoc(collection(db, "tasks"), taskData);
-    showMsg("success", "Saved as a draft. Find it under Track Posted Tasks whenever you're ready to continue.");
+    if (editContext) {
+      delete taskData.isEditResubmission;
+      await updateDoc(doc(db, "tasks", editContext.taskId), taskData);
+    } else {
+      await addDoc(collection(db, "tasks"), taskData);
+    }
+    // Nothing left to keep on screen — the draft now lives in Track
+    // Posted Tasks, so reset the form and take them straight to its
+    // Drafts tab.
+    postTaskForm.reset();
+    showMsg("success", "Saved as a draft — taking you to your drafts…");
+    setTimeout(() => { window.location.href = "track-posted-tasks.html?tab=draft"; }, 1200);
   } catch (err) {
     console.error("Save draft error:", err);
     showMsg("error", "Couldn't save the draft. Please try again.");
@@ -859,6 +1068,107 @@ const alertDot = document.getElementById("alertDot");
 
 let unsubscribeUserDoc = null;
 
+/* ---------------------------------------------------------
+   EDIT / DRAFT CONTINUATION
+   Three query params this page now understands, all pointing at
+   an existing tasks/{id} doc owned by the signed-in employer:
+     ?draft=ID         — continuing a saved draft (first real post)
+     ?edit=ID          — "Edit & Repost" from Track Posted Tasks'
+                         Declined tab
+     ?editapproved=ID  — "Edit" from Track Posted Tasks' Active tab
+                         (an already-live task) — resubmitting sends
+                         it back to pending_review with
+                         isEditResubmission: true so both this page
+                         and Track Posted Tasks can tell it apart
+                         from a brand-new submission
+   In every case the whole form is prefilled from the existing
+   doc; submitting UPDATES that same doc instead of creating a new
+   one (see the submit handler below).
+   --------------------------------------------------------- */
+let editContext = null; // { mode, taskId, original }
+
+async function loadEditContextFromURL() {
+  const params = new URLSearchParams(window.location.search);
+  const draftId = params.get("draft");
+  const editId = params.get("edit");
+  const editApprovedId = params.get("editapproved");
+  const taskId = draftId || editId || editApprovedId;
+  if (!taskId) return;
+  const mode = draftId ? "draft" : editApprovedId ? "editapproved" : "edit";
+
+  try {
+    const snap = await getDoc(doc(db, "tasks", taskId));
+    if (!snap.exists() || snap.data().employerUid !== currentUser.uid) {
+      showMsg("error", "That task couldn't be found, or doesn't belong to your account.");
+      return;
+    }
+    editContext = { mode, taskId, original: snap.data() };
+    prefillFormFromTask(editContext.original, mode);
+  } catch (err) {
+    console.error("Load task for edit error:", err);
+    showMsg("error", "Couldn't load that task for editing. Please try again.");
+  }
+}
+
+function prefillFormFromTask(data, mode) {
+  categorySelect.value = data.category || "";
+  categorySelect.dispatchEvent(new Event("change"));
+
+  // Match the stored title back to a catalog item so the floor/proof
+  // preset comes along with it; fall back to a manual preset if the
+  // catalog has since changed (title no longer matches any item).
+  const cat = TASK_CATALOG[data.category];
+  const itemIndex = cat?.items.findIndex((i) => i.title === data.title) ?? -1;
+  if (cat && itemIndex > -1) {
+    subcategorySelect.value = String(itemIndex);
+    subcategorySelect.dispatchEvent(new Event("change"));
+  } else {
+    // Manual fallback — no catalog match, so drive the floor/proof
+    // list directly off what was actually stored on the task.
+    selectedPreset = { worker: data.workerPayout, platform: data.platformFee, proof: null, floor: data.amountPerWorker };
+    proofListEl.innerHTML = (data.proofRequirements || [])
+      .map((text) => `<li><i class="bx bx-check-circle"></i><span>${escapeHtml(text)}</span></li>`)
+      .join("");
+  }
+
+  titleInput.value = data.title || "";
+  descriptionInput.value = (data.description || "").replace(new RegExp(`\\n\\n${RETENTION_CLAUSE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`), "").trim();
+  taskLinkInput.value = data.taskLink || "";
+  instructionsInput.value = data.instructions || "";
+
+  const screenshotRequired = !!data.screenshotRequired;
+  screenshotSwitch.setAttribute("aria-checked", String(screenshotRequired));
+  screenshotStepperRow.classList.toggle("disabled", !screenshotRequired);
+  screenshotExampleRow.style.display = screenshotRequired ? "" : "none";
+  screenshotCount = data.screenshotCount || 1;
+  updateScreenshotStepper();
+  exampleScreenshots = (data.exampleScreenshots || []).map((ex) =>
+    typeof ex === "string" ? { url: ex, path: null, name: "Example" } : { url: ex.url, path: ex.path || null, name: "Example" }
+  );
+  renderExampleScreenshots();
+
+  amountPerWorkerInput.value = data.amountPerWorker || "";
+  workersRequiredInput.value = data.workersRequired || WORKERS_MIN;
+  if (mode === "editapproved") {
+    workersFloor = Math.max(WORKERS_MIN, data.slotsFilled || 0);
+    workersRequiredInput.min = workersFloor;
+  }
+
+  const urgent = !!data.urgent;
+  urgentSwitch.setAttribute("aria-checked", String(urgent));
+  urgentAmountViewport.classList.toggle("open", urgent);
+  if (urgent) urgentAmountInput.value = data.urgentFee || URGENT_BASE;
+
+  updateCostSummary();
+  wizardSubmitBtn.querySelector(".btn-label").textContent = mode === "draft" ? "Post Task" : "Resubmit Task";
+
+  showMsg("success", mode === "editapproved"
+    ? "Editing a live task — resubmitting will pull it off the Earn feed and send it back for admin review."
+    : mode === "edit"
+      ? "Editing a declined task — make your changes and resubmit for review."
+      : "Continuing your draft — fill in anything left, then post when ready.");
+}
+
 onAuthStateChanged(auth, (user) => {
   if (user) {
     initAuthGuard(db, auth, user);
@@ -872,6 +1182,7 @@ onAuthStateChanged(auth, (user) => {
   }
 
   currentUser = user;
+  loadEditContextFromURL();
 
   if (unsubscribeUserDoc) unsubscribeUserDoc();
 
@@ -883,19 +1194,15 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide (no more
+    // Student/Teacher/None distinction) — show the username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
 
+    currentUserData = { fullName: data.fullName || "", username: data.username || "", email: user.email || "" };
     currentDepositBalance = data.wallet?.deposit ?? 0;
     csBalance.textContent = formatNaira(currentDepositBalance);
     updateCostSummary();
-
-    if (data.institutionAbbr && !taskLocationSelect.querySelector(`option[value="${data.institutionAbbr}"]`)) {
-      const opt = document.createElement("option");
-      opt.value = data.institutionAbbr;
-      opt.textContent = `${data.institutionAbbr} only`;
-      taskLocationSelect.appendChild(opt);
-    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -950,4 +1257,78 @@ onAuthStateChanged(auth, (user) => {
        - On approval: slotsFilled stays as-is (it was already
          counted at submission time) — approval just marks that
          submission doc approved and releases the worker's payout.
+
+   - Location is gone — the field, the select, and the per-employer
+     institution-only option that used to get injected from
+     institutionAbbr are all removed (accountType/institutionAbbr
+     are retired site-wide; every task is open to any worker now).
+     userTypeEl shows @username instead of accountType.
+
+   - EmailJS admin alert on post: same account/mechanism as
+     request-task.js (see that file's own notes for the full
+     rationale) — EMAILJS_PUBLIC_KEY is shared with that page.
+     EMAILJS_TASK_TEMPLATE_ID ("template_task_posted") is a
+     placeholder; create that template in the EmailJS dashboard (or
+     point this at whichever template should actually receive these
+     fields) before it'll deliver anything. Fires for every path
+     that lands a task in pending_review — new post, draft's first
+     submission, and edit/editapproved resubmission alike — since
+     admin's Pending tab needs to notice all three.
+
+   - Screenshot proof toggle now actually does something beyond
+     disabling the stepper: turning it on appends a "Screenshot
+     proof required (N)" line to the proof list (removed instantly
+     if turned back off, and re-numbered live as the stepper
+     changes), and reveals an optional multi-image upload for the
+     employer's own example screenshot(s) — for showing workers
+     exactly what page/state to capture. Turning the switch off
+     also deletes any already-uploaded examples (from Storage, not
+     just the UI). Examples upload straight to Firebase Storage
+     (uploadBytesResumable/getDownloadURL), the same mechanism
+     post-advertisement.js's media upload already uses — that page's
+     own notes flag Storage as currently broken for large banner
+     uploads and ask for a Cloudinary migration; if that migration
+     happens, move this upload over to Cloudinary at the same time
+     so the two pages don't end up on two different upload
+     backends. Small images (screenshots) are far less likely to
+     hit whatever is breaking the banner uploads, but worth
+     confirming once that's diagnosed.
+
+   - Edit / draft-continue (?draft=/?edit=/?editapproved=): all
+     three prefill the whole form from an existing tasks/{id} doc
+     (ownership-checked against employerUid) and update that same
+     doc on submit instead of creating a new one.
+       - ?draft=ID: the draft was never charged, so submitting it
+         charges the full grandTotal for the first time — same as
+         a brand-new post, just updating the draft's doc instead of
+         creating a second one.
+       - ?edit=ID (declined): was already charged in full when
+         first posted. Resubmitting charges/refunds only the
+         *difference* if the price changed (workers/amount/urgent
+         edited), touches nothing wallet-wise if it didn't, and
+         goes back to status: "pending_review" — declineHistory is
+         left untouched (buildTaskData doesn't set that key at all,
+         so update() naturally leaves whatever's already there).
+       - ?editapproved=ID (already live): same delta-billing as
+         ?edit=, but also sets isEditResubmission: true and floors
+         workersRequired at whatever slotsFilled already is (can't
+         un-fill a slot by editing the task down) — preserved
+         explicitly in the transaction since buildTaskData always
+         resets slotsFilled to 0 for what it assumes is a brand-new
+         task. Track Posted Tasks' Active tab is what links here;
+         its own "Edit Requests" tab is what isEditResubmission is
+         for — this page doesn't otherwise treat that flag
+         specially. admin/tasks.js's Pending tab shows both kinds
+         of pending_review task side by side without needing to
+         know the flag exists.
+       - Every mode re-finds the original catalog item by matching
+         the stored title back to TASK_CATALOG[category].items, so
+         the floor/proof/platform-fee preset comes along with it. If
+         the catalog has since changed and no title matches, it
+         falls back to a manual preset built straight from the
+         stored amountPerWorker/workerPayout/platformFee/
+         proofRequirements — the floor-note copy in that fallback
+         path stays generic ("can't be set lower than the task's
+         listed price") since there's no catalog item to quote a
+         specific number from.
    =========================================================== */
