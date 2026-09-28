@@ -434,21 +434,29 @@ async function renderTaskCard(taskId, task, tabKey) {
 
   const actionSlot = card.querySelector(".tc-action-slot");
 
-    if (tabKey === "pending") {
+  if (tabKey === "pending") {
     actionSlot.innerHTML = `
       <div class="tc-actions">
-        <button type="button" class="btn btn-success" data-act="approve" title="Approve" aria-label="Approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Approve</span></button>
-        <button type="button" class="btn btn-danger" data-act="decline-toggle" title="Decline" aria-label="Decline"><i class="bx bx-x"></i><span class="btn-label">Decline</span></button>
-        <button type="button" class="btn btn-share" data-act="share" title="Share" aria-label="Share"><i class="bx bx-share-alt"></i><span class="btn-label">Share</span></button>
+        <button type="button" class="btn btn-success btn-icon-only" data-act="approve" title="Approve" aria-label="Approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label sr-only">Approve</span></button>
+        <button type="button" class="btn btn-danger btn-icon-only" data-act="decline-toggle" title="Decline" aria-label="Decline"><i class="bx bx-x"></i><span class="btn-label sr-only">Decline</span></button>
+        <button type="button" class="btn btn-share btn-icon-only" data-act="share" title="Share" aria-label="Share"><i class="bx bx-share-alt"></i><span class="btn-label sr-only">Share</span></button>
       </div>
       <div class="tc-decline-panel" id="declinePanel-${taskId}"><div><div class="tc-decline-inner">
         <textarea id="declineReason-${taskId}" placeholder="Reason for declining (shown to the employer)…"></textarea>
-        <div class="tc-actions" style="grid-template-columns: repeat(2, 1fr);">
+        <div class="tc-actions">
           <button type="button" class="btn btn-ghost" data-act="decline-cancel">Cancel</button>
           <button type="button" class="btn btn-danger" data-act="decline-confirm"><span class="btn-spinner"></span><i class="bx bx-x-circle"></i><span class="btn-label">Confirm Decline &amp; Refund</span></button>
         </div>
       </div></div></div>
     `;
+
+    const declinePanel = actionSlot.querySelector(`#declinePanel-${taskId}`);
+    actionSlot.querySelector('[data-act="approve"]').addEventListener("click", (e) => approveTask(taskId, card, e.currentTarget, false));
+    actionSlot.querySelector('[data-act="decline-toggle"]').addEventListener("click", () => declinePanel.classList.add("show"));
+    actionSlot.querySelector('[data-act="decline-cancel"]').addEventListener("click", () => declinePanel.classList.remove("show"));
+    actionSlot.querySelector('[data-act="decline-confirm"]').addEventListener("click", (e) => declineTask(taskId, task, card, e.currentTarget));
+    actionSlot.querySelector('[data-act="share"]').addEventListener("click", () => shareTask(task.title, task.urgent));
+  }
 
   if (tabKey === "active") {
     // Only the worker's own portion of each unfilled slot comes back —
