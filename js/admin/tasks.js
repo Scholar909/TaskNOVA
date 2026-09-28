@@ -19,8 +19,7 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
-  getDocs,
+  onSnapshot,
   getCountFromServer,
   arrayUnion,
   runTransaction,
@@ -178,20 +177,20 @@ function escapeHtml(str) {
   }[c]));
 }
 
-// Cache of employerUid/requesterUid -> { fullName, accountType }
+// Cache of employerUid/requesterUid -> { fullName, username }
 const userCache = new Map();
 async function getUserSummary(uid) {
-  if (!uid) return { fullName: "Unknown user", accountType: "" };
+  if (!uid) return { fullName: "Unknown user", username: "" };
   if (userCache.has(uid)) return userCache.get(uid);
   try {
     const snap = await getDoc(doc(db, "users", uid));
     const summary = snap.exists()
-      ? { fullName: snap.data().fullName || "TaskNOVA User", accountType: snap.data().accountType || "" }
-      : { fullName: "Deleted user", accountType: "" };
+      ? { fullName: snap.data().fullName || "TaskNOVA User", username: snap.data().username || "" }
+      : { fullName: "Deleted user", username: "" };
     userCache.set(uid, summary);
     return summary;
   } catch {
-    return { fullName: "Unknown user", accountType: "" };
+    return { fullName: "Unknown user", username: "" };
   }
 }
 
@@ -209,7 +208,7 @@ tabButtons.forEach((btn) => {
     panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === tab));
     if (!loadedTabs.has(tab)) {
       loadedTabs.add(tab);
-      loadTab(tab, true);
+      subscribeTab(tab, true);
     }
   });
 });
@@ -260,69 +259,82 @@ const TAB_CONFIG = {
   }
 };
 
-// pagination cursors per tab key
+// per-tab live state: a single onSnapshot per tab, re-subscribed with a
+// bigger `limit` each time "Load more" is clicked (see subscribeTab notes)
 const tabState = {};
-function freshState() { return { lastDoc: null, hasMore: true, isLoading: false, count: 0 }; }
+function freshState() { return { unsub: null, pageSize: PAGE_SIZE, hasMore: true, count: 0 }; }
 Object.keys(TAB_CONFIG).forEach((k) => { tabState[k] = freshState(); });
 
 /* ---------------------------------------------------------
-   LOAD A TAB PAGE
+   SUBSCRIBE A TAB — one onSnapshot per tab (live updates), whose
+   `limit` grows by PAGE_SIZE each time "Load more" is clicked.
+   Re-subscribing on every growth re-sends the whole (bigger)
+   window, which is simpler than merging realtime updates with a
+   startAfter cursor and still gives every loaded row live data
+   (an admin approving/declining elsewhere updates this list
+   instantly instead of needing a refresh).
    --------------------------------------------------------- */
-async function loadTab(tabKey, reset = false) {
+async function subscribeTab(tabKey, reset = false) {
   const cfg = TAB_CONFIG[tabKey];
   const state = tabState[tabKey];
-  if (state.isLoading) return;
+
   if (reset) {
+    if (state.unsub) { state.unsub(); state.unsub = null; }
     Object.assign(state, freshState());
     document.getElementById(cfg.listEl).innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
     document.getElementById(cfg.emptyEl).style.display = "none";
   }
-  if (!state.hasMore) return;
 
-  state.isLoading = true;
   const loadMoreBtn = document.getElementById(cfg.loadMoreEl);
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
-  try {
-    const constraints = [...cfg.constraints, orderBy(cfg.order[0], cfg.order[1])];
-    if (state.lastDoc) constraints.push(startAfter(state.lastDoc));
-    constraints.push(limit(PAGE_SIZE));
+  if (state.unsub) state.unsub();
 
-    const snap = await getDocs(query(collection(db, cfg.coll), ...constraints));
+  const constraints = [...cfg.constraints, orderBy(cfg.order[0], cfg.order[1]), limit(state.pageSize)];
+
+  state.unsub = onSnapshot(query(collection(db, cfg.coll), ...constraints), async (snap) => {
     const listEl = document.getElementById(cfg.listEl);
-    if (reset) listEl.innerHTML = "";
+    const emptyEl = document.getElementById(cfg.emptyEl);
 
-    if (snap.empty && state.count === 0) {
-      document.getElementById(cfg.emptyEl).style.display = "flex";
+    if (snap.empty) {
+      listEl.innerHTML = "";
+      emptyEl.style.display = "flex";
       document.getElementById(cfg.metaEl).textContent = cfg.emptyText;
       state.hasMore = false;
+      state.count = 0;
       loadMoreBtn.style.display = "none";
+      loadMoreBtn.classList.remove("loading");
+      loadMoreBtn.disabled = false;
       return;
     }
 
+    emptyEl.style.display = "none";
+    listEl.innerHTML = "";
     for (const docSnap of snap.docs) {
-      const cardEl = await cfg.render(docSnap.id, docSnap.data(), tabKey);
-      listEl.appendChild(cardEl);
+      listEl.appendChild(await cfg.render(docSnap.id, docSnap.data(), tabKey));
     }
 
-    state.count += snap.docs.length;
-    state.lastDoc = snap.docs[snap.docs.length - 1] || state.lastDoc;
-    state.hasMore = snap.docs.length === PAGE_SIZE;
+    state.count = snap.docs.length;
+    state.hasMore = snap.docs.length === state.pageSize;
     loadMoreBtn.style.display = state.hasMore ? "inline-flex" : "none";
-    document.getElementById(cfg.metaEl).textContent = `${state.count} item${state.count === 1 ? "" : "s"} loaded`;
-  } catch (err) {
-    console.error(`Load ${tabKey} error:`, err);
-    showToast("Couldn't load that tab. Please try again.", "error");
-  } finally {
-    state.isLoading = false;
     loadMoreBtn.classList.remove("loading");
     loadMoreBtn.disabled = false;
-  }
+    document.getElementById(cfg.metaEl).textContent = `${state.count} item${state.count === 1 ? "" : "s"} loaded`;
+  }, (err) => {
+    console.error(`Subscribe ${tabKey} error:`, err);
+    showToast("Couldn't load that tab. Please try again.", "error");
+    loadMoreBtn.classList.remove("loading");
+    loadMoreBtn.disabled = false;
+  });
 }
 
 Object.keys(TAB_CONFIG).forEach((tabKey) => {
-  document.getElementById(TAB_CONFIG[tabKey].loadMoreEl)?.addEventListener("click", () => loadTab(tabKey, false));
+  document.getElementById(TAB_CONFIG[tabKey].loadMoreEl)?.addEventListener("click", () => {
+    const state = tabState[tabKey];
+    state.pageSize += PAGE_SIZE;
+    subscribeTab(tabKey, false);
+  });
 });
 
 /* ---------------------------------------------------------
@@ -335,7 +347,7 @@ document.querySelectorAll(".rf-chip").forEach((chip) => {
     document.querySelectorAll(".rf-chip").forEach((c) => c.classList.toggle("active", c === chip));
     requestsFilter = chip.dataset.rf;
     TAB_CONFIG.requests.constraints = [where("status", "==", requestsFilter)];
-    loadTab("requests", true);
+    subscribeTab("requests", true);
   });
 });
 
@@ -360,7 +372,6 @@ async function renderTaskCard(taskId, task, tabKey) {
 
   const tags = [
     `<span class="tc-tag category"><i class="bx ${icon}"></i> ${escapeHtml(task.categoryLabel || task.category || "Task")}</span>`,
-    task.location ? `<span class="tc-tag"><i class="bx bx-map-pin"></i> ${escapeHtml(task.location)}</span>` : "",
     task.urgent ? `<span class="tc-tag urgent"><i class="bx bx-bolt"></i> Urgent</span>` : ""
   ].join("");
 
@@ -394,7 +405,7 @@ async function renderTaskCard(taskId, task, tabKey) {
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(task.title || "Untitled task")}</div>
-        <div class="tc-sub">${escapeHtml(employer.fullName)}${employer.accountType ? " · " + escapeHtml(employer.accountType) : ""}</div>
+        <div class="tc-sub">${escapeHtml(employer.fullName)}${employer.username ? " · @" + escapeHtml(employer.username) : ""}</div>
       </div>
       <div class="tc-amount">${formatNaira(task.amountPerWorker)}<span>per worker</span></div>
     </div>
@@ -426,9 +437,9 @@ async function renderTaskCard(taskId, task, tabKey) {
   if (tabKey === "pending") {
     actionSlot.innerHTML = `
       <div class="tc-actions">
-        <button type="button" class="btn btn-success" data-act="approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Approve</span></button>
-        <button type="button" class="btn btn-share" data-act="approve-share"><span class="btn-spinner"></span><i class="bx bx-share-alt"></i><span class="btn-label">Approve &amp; Share</span></button>
-        <button type="button" class="btn btn-danger" data-act="decline-toggle"><i class="bx bx-x"></i><span class="btn-label">Decline</span></button>
+        <button type="button" class="btn btn-success btn-icon-only" data-act="approve" title="Approve" aria-label="Approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label sr-only">Approve</span></button>
+        <button type="button" class="btn btn-danger btn-icon-only" data-act="decline-toggle" title="Decline" aria-label="Decline"><i class="bx bx-x"></i><span class="btn-label sr-only">Decline</span></button>
+        <button type="button" class="btn btn-share btn-icon-only" data-act="share" title="Share" aria-label="Share"><i class="bx bx-share-alt"></i><span class="btn-label sr-only">Share</span></button>
       </div>
       <div class="tc-decline-panel" id="declinePanel-${taskId}"><div><div class="tc-decline-inner">
         <textarea id="declineReason-${taskId}" placeholder="Reason for declining (shown to the employer)…"></textarea>
@@ -441,21 +452,25 @@ async function renderTaskCard(taskId, task, tabKey) {
 
     const declinePanel = actionSlot.querySelector(`#declinePanel-${taskId}`);
     actionSlot.querySelector('[data-act="approve"]').addEventListener("click", (e) => approveTask(taskId, card, e.currentTarget, false));
-    actionSlot.querySelector('[data-act="approve-share"]').addEventListener("click", (e) => approveTask(taskId, card, e.currentTarget, true, task.title, task.urgent));
     actionSlot.querySelector('[data-act="decline-toggle"]').addEventListener("click", () => declinePanel.classList.add("show"));
     actionSlot.querySelector('[data-act="decline-cancel"]').addEventListener("click", () => declinePanel.classList.remove("show"));
     actionSlot.querySelector('[data-act="decline-confirm"]').addEventListener("click", (e) => declineTask(taskId, task, card, e.currentTarget));
+    actionSlot.querySelector('[data-act="share"]').addEventListener("click", () => shareTask(task.title, task.urgent));
   }
 
   if (tabKey === "active") {
-    const refundAmount = Math.max(0, (task.workersRequired || 0) - (task.slotsFilled || 0)) * (task.amountPerWorker || 0);
+    // Only the worker's own portion of each unfilled slot comes back —
+    // TaskNOVA's per-worker platform fee (and any urgent placement fee)
+    // is never refundable, matching Pending's decline/delete rule.
+    const refundAmount = Math.max(0, (task.workersRequired || 0) - (task.slotsFilled || 0)) * (task.workerPayout ?? Math.max(0, (task.amountPerWorker || 0) - (task.platformFee || 0)));
     actionSlot.innerHTML = `
       <div class="tc-actions">
-        <button type="button" class="btn btn-ghost" data-act="toggle-hide"><span class="btn-spinner"></span><i class="bx ${task.hidden ? "bx-show" : "bx-hide"}"></i><span class="btn-label">${task.hidden ? "Unhide" : "Hide"}</span></button>
-        <button type="button" class="btn btn-danger" data-act="delete-toggle"><i class="bx bx-trash"></i><span class="btn-label">Delete</span></button>
+        <button type="button" class="btn btn-ghost btn-icon-only" data-act="toggle-hide" title="${task.hidden ? "Unhide" : "Hide"}" aria-label="${task.hidden ? "Unhide" : "Hide"}"><span class="btn-spinner"></span><i class="bx ${task.hidden ? "bx-show" : "bx-hide"}"></i><span class="btn-label sr-only">${task.hidden ? "Unhide" : "Hide"}</span></button>
+        <button type="button" class="btn btn-share btn-icon-only" data-act="share" title="Share" aria-label="Share"><i class="bx bx-share-alt"></i><span class="btn-label sr-only">Share</span></button>
+        <button type="button" class="btn btn-danger btn-icon-only" data-act="delete-toggle" title="Delete" aria-label="Delete"><i class="bx bx-trash"></i><span class="btn-label sr-only">Delete</span></button>
       </div>
       <div class="tc-decline-panel" id="deletePanel-${taskId}"><div><div class="tc-decline-inner">
-        <p style="font-size:.82rem;color:var(--text-soft);">This permanently deletes the task. ${task.slotsFilled ? `${task.slotsFilled} slot${task.slotsFilled === 1 ? "" : "s"} already filled stay${task.slotsFilled === 1 ? "s" : ""} spent — only the unfilled balance is refunded:` : "No slots have been filled yet, so the full balance is refunded:"} <strong>${formatNaira(refundAmount)}</strong> back to ${escapeHtml(employer.fullName)}'s wallet.</p>
+        <p style="font-size:.82rem;color:var(--text-soft);">This permanently deletes the task. ${task.slotsFilled ? `${task.slotsFilled} slot${task.slotsFilled === 1 ? "" : "s"} already filled stay${task.slotsFilled === 1 ? "s" : ""} spent — only the unfilled workers' share is refunded (TaskNOVA's platform fee is never refundable):` : "No slots have been filled yet, so the workers' share of the full balance is refunded (TaskNOVA's platform fee is never refundable):"} <strong>${formatNaira(refundAmount)}</strong> back to ${escapeHtml(employer.fullName)}'s wallet.</p>
         <div class="tc-actions">
           <button type="button" class="btn btn-ghost" data-act="delete-cancel">Cancel</button>
           <button type="button" class="btn btn-danger" data-act="delete-confirm"><span class="btn-spinner"></span><i class="bx bx-trash"></i><span class="btn-label">Confirm Delete &amp; Refund</span></button>
@@ -463,6 +478,7 @@ async function renderTaskCard(taskId, task, tabKey) {
       </div></div></div>
     `;
     actionSlot.querySelector('[data-act="toggle-hide"]').addEventListener("click", (e) => toggleHide(taskId, task.hidden, card, e.currentTarget));
+    actionSlot.querySelector('[data-act="share"]').addEventListener("click", () => shareTask(task.title, task.urgent));
     const deletePanel = actionSlot.querySelector(`#deletePanel-${taskId}`);
     actionSlot.querySelector('[data-act="delete-toggle"]').addEventListener("click", () => deletePanel.classList.add("show"));
     actionSlot.querySelector('[data-act="delete-cancel"]').addEventListener("click", () => deletePanel.classList.remove("show"));
@@ -487,20 +503,20 @@ async function renderRequestCard(reqId, req) {
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(req.whatWanted || "Custom task request")}</div>
-        <div class="tc-sub">${escapeHtml(requester.fullName)}${requester.accountType ? " · " + escapeHtml(requester.accountType) : ""}</div>
+        <div class="tc-sub">${escapeHtml(requester.fullName)}${requester.username ? " · @" + escapeHtml(requester.username) : ""}</div>
       </div>
     </div>
     <div class="tc-tags">
       <span class="tc-tag"><i class="bx bx-window-alt"></i> ${escapeHtml(req.platform || "—")}</span>
       <span class="tc-tag"><i class="bx bx-group"></i> ${req.workersRequired || 0} workers</span>
-      ${isResolved ? `<span class="tc-tag visible"><i class="bx bx-check"></i> Resolved</span>` : ""}
+      ${isResolved ? `<span class="tc-tag ${req.verdict === "rejected" ? "hidden" : "visible"}"><i class="bx ${req.verdict === "rejected" ? "bx-x-circle" : "bx-check"}"></i> ${req.verdict === "rejected" ? "Rejected" : "Approved"}</span>` : ""}
     </div>
     <button type="button" class="tc-toggle"><i class="bx bx-chevron-down"></i> View details</button>
     <div class="tc-body"><div class="tc-detail-grid">
       <div class="tc-detail-row"><strong>Instructions</strong><p>${escapeHtml(req.instructions || "—")}</p></div>
       <div class="tc-detail-row"><strong>Desired result</strong><p>${escapeHtml(req.desiredResult || "—")}</p></div>
       <div class="tc-detail-row"><strong>Proof requirements</strong><div class="tc-proof-list">${(req.proofRequirements || []).map((p) => `<span>${escapeHtml(p)}</span>`).join("") || "<span>—</span>"}</div></div>
-      ${isResolved && req.resolutionNote ? `<div class="tc-detail-row"><strong>Resolution note</strong><p>${escapeHtml(req.resolutionNote)}</p></div>` : ""}
+      ${isResolved ? `<div class="tc-detail-row"><strong>Verdict</strong><p>${req.verdict === "rejected" ? "Rejected" : "Approved"}${req.resolutionNote ? " — " + escapeHtml(req.resolutionNote) : ""}</p></div>` : ""}
     </div></div>
     <div class="tc-date">Requested ${formatDate(req.createdAt)}${isResolved && req.resolvedAt ? ` · Resolved ${formatDate(req.resolvedAt)}` : ""}</div>
     <div class="tc-action-slot"></div>
@@ -515,7 +531,15 @@ async function renderRequestCard(reqId, req) {
         <button type="button" class="btn btn-success" data-act="resolve-toggle"><i class="bx bx-check-circle"></i><span class="btn-label">Mark Resolved</span></button>
       </div>
       <div class="tc-decline-panel" id="resolvePanel-${reqId}"><div><div class="tc-resolve-inner">
-        <textarea id="resolveNote-${reqId}" placeholder="Resolution note (optional) — e.g. added to catalogue, not feasible, etc."></textarea>
+        <div class="w-field">
+          <label for="resolveVerdict-${reqId}">Verdict</label>
+          <select id="resolveVerdict-${reqId}" required>
+            <option value="" disabled selected>Choose a verdict…</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <textarea id="resolveNote-${reqId}" placeholder="Note to keep on record (optional) — e.g. added to catalogue, not feasible, etc."></textarea>
         <div class="tc-actions">
           <button type="button" class="btn btn-ghost" data-act="resolve-cancel">Cancel</button>
           <button type="button" class="btn btn-success" data-act="resolve-confirm"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Confirm</span></button>
@@ -538,7 +562,7 @@ async function renderRequestCard(reqId, req) {
    false) — urgent tasks carry their bolt badge automatically
    since that's read straight off the task doc by earn.js.
    --------------------------------------------------------- */
-async function approveTask(taskId, cardEl, btnEl, alsoShare, title, urgent) {
+async function approveTask(taskId, cardEl, btnEl) {
   btnEl.classList.add("loading");
   btnEl.disabled = true;
   try {
@@ -547,21 +571,6 @@ async function approveTask(taskId, cardEl, btnEl, alsoShare, title, urgent) {
       hidden: false,
       approvedAt: serverTimestamp()
     });
-
-    if (alsoShare) {
-      const shareText = `New task on TaskNOVA${urgent ? " ⚡ (Urgent)" : ""}: ${title || "Check it out"} — earn money completing it now.`;
-      const shareUrl = `${window.location.origin}/user/earn.html`;
-      if (navigator.share) {
-        try {
-          await navigator.share({ title: "TaskNOVA", text: shareText, url: shareUrl });
-        } catch {
-          /* user cancelled share sheet — no-op */
-        }
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
-        showToast("Task approved — share link copied to clipboard.");
-      }
-    }
 
     showToast("Task approved — now live on the Earn feed.");
     animateOutAndRemove(cardEl);
@@ -573,6 +582,26 @@ async function approveTask(taskId, cardEl, btnEl, alsoShare, title, urgent) {
   } finally {
     btnEl.classList.remove("loading");
     btnEl.disabled = false;
+  }
+}
+
+/* ---------------------------------------------------------
+   ACTION — SHARE (Pending and Active both use this — sharing a
+   task doesn't depend on its approval state, so it's a plain,
+   standalone icon rather than bundled into Approve.)
+   --------------------------------------------------------- */
+async function shareTask(title, urgent) {
+  const shareText = `New task on TaskNOVA${urgent ? " ⚡ (Urgent)" : ""}: ${title || "Check it out"} — earn money completing it now.`;
+  const shareUrl = `${window.location.origin}/user/earn.html`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "TaskNOVA", text: shareText, url: shareUrl });
+    } catch {
+      /* user cancelled share sheet — no-op */
+    }
+  } else if (navigator.clipboard) {
+    await navigator.clipboard.writeText(`${shareText} ${shareUrl}`);
+    showToast("Share link copied to clipboard.");
   }
 }
 
@@ -649,6 +678,8 @@ async function toggleHide(taskId, currentlyHidden, cardEl, btnEl) {
     const label = btnEl.querySelector(".btn-label");
     icon.className = !currentlyHidden ? "bx bx-show" : "bx bx-hide";
     label.textContent = !currentlyHidden ? "Unhide" : "Hide";
+    btnEl.title = !currentlyHidden ? "Unhide" : "Hide";
+    btnEl.setAttribute("aria-label", !currentlyHidden ? "Unhide" : "Hide");
     btnEl.dataset.act = "toggle-hide";
     btnEl.onclick = null;
     btnEl.replaceWith(btnEl.cloneNode(true));
@@ -668,16 +699,21 @@ async function toggleHide(taskId, currentlyHidden, cardEl, btnEl) {
    ACTION — MARK REQUEST RESOLVED
    --------------------------------------------------------- */
 async function resolveRequest(reqId, cardEl, btnEl) {
+  const verdictSelect = document.getElementById(`resolveVerdict-${reqId}`);
+  const verdict = verdictSelect?.value || "";
+  if (!verdict) { verdictSelect?.focus(); return; }
+
   const note = document.getElementById(`resolveNote-${reqId}`)?.value.trim() || "";
   btnEl.classList.add("loading");
   btnEl.disabled = true;
   try {
     await updateDoc(doc(db, "taskRequests", reqId), {
       status: "resolved",
+      verdict,
       resolutionNote: note,
       resolvedAt: serverTimestamp()
     });
-    showToast("Request marked resolved.");
+    showToast(`Request marked resolved — ${verdict}.`);
     animateOutAndRemove(cardEl);
     bumpCount("countRequests", -1);
   } catch (err) {
@@ -690,12 +726,13 @@ async function resolveRequest(reqId, cardEl, btnEl) {
 }
 
 /* ---------------------------------------------------------
-   ACTION — DELETE ACTIVE TASK (partial refund)
-   Slots already filled are treated as spent and non-refundable;
-   only the unfilled balance — (workersRequired - slotsFilled) *
-   amountPerWorker — is credited back. This is the same math the
-   employer's own "delete an active task" flow on Track Posted
-   Tasks uses; this just gives admin the equivalent action.
+   ACTION — DELETE ACTIVE TASK (partial refund, workers' share only)
+   Slots already filled are treated as spent and non-refundable.
+   Of the unfilled balance, only the workers' own payout comes
+   back — (workersRequired - slotsFilled) * workerPayout —
+   TaskNOVA's per-worker platform fee is never refunded, matching
+   the employer's own "delete an active task" flow on Track Posted
+   Tasks, which uses this exact same math.
    --------------------------------------------------------- */
 async function deleteActiveTask(taskId, task, refundAmount, cardEl, btnEl) {
   btnEl.classList.add("loading");
@@ -803,7 +840,7 @@ onAuthStateChanged(auth, async (user) => {
   // are lazy-loaded the first time their button is clicked.
   loadCounts();
   loadedTabs.add("pending");
-  loadTab("pending", true);
+  subscribeTab("pending", true);
 });
 
 /* ===========================================================
@@ -815,6 +852,24 @@ onAuthStateChanged(auth, async (user) => {
      the getDoc target in the auth guard above accordingly —
      nothing else on this page depends on which it is.
 
+   - Every tab (Pending/Active/Declined/Completed/Requests) is now
+     a live onSnapshot instead of a one-time getDocs read, so an
+     approval/decline/resolve from another admin's session (or
+     this one, in another tab) shows up without a refresh. "Load
+     more" grows that tab's own `limit` by PAGE_SIZE and
+     re-subscribes rather than paging with a startAfter cursor —
+     simpler to keep live, at the cost of re-sending the whole
+     (bigger) window each time instead of only the new slice. One
+     side effect worth knowing: any snapshot update — even one
+     from an unrelated task in the same tab — re-renders the whole
+     list, so an open "View details" toggle or a decline/delete
+     reason typed but not yet confirmed will collapse/reset if
+     another change comes in first. Fine for admin's usage pattern
+     here; flag it if that becomes annoying in practice.
+
+   - accountType/institutionAbbr are retired site-wide — task and
+     request card subtitles now show @username instead.
+
    - declineHistory is a plain array of reason strings (matching
      how track-posted-tasks.js already reads it), appended via
      arrayUnion each time this page declines a task. declinedAt
@@ -823,27 +878,39 @@ onAuthStateChanged(auth, async (user) => {
      createdAt; track-posted-tasks.js doesn't need to read it.
 
    - There's no stored "old vs new" diff when an employer edits
-     and reposts a declined task — post-task.html currently
+     and reposts a declined or approved task — post-task.html
      overwrites the same task doc in place, so only the current
      version and the running declineHistory reasons exist to show
-     here. A true version-by-version comparison would need the
-     edit flow to snapshot the previous version before overwriting
-     (e.g. into a taskVersions subcollection) — flag if you want
-     that built out.
+     here. An approved task that gets edited comes back through
+     with status: "pending_review" and isEditResubmission: true
+     (post-task.js sets that flag) — this page doesn't need to
+     treat it specially since the Pending tab already shows every
+     pending_review task regardless of that flag; it's there so
+     track-posted-tasks.js can split its own "Pending" and "Edit
+     Requests" tabs apart. A true version-by-version comparison
+     would need the edit flow to snapshot the previous version
+     before overwriting (e.g. into a taskVersions subcollection) —
+     flag if you want that built out.
 
-   - Approve & Share uses the Web Share API on mobile (falls back
-     to clipboard copy on desktop). It links to the general Earn
-     feed rather than a specific task, since earn.html doesn't
+   - Pending's three actions are now icon-only: Approve (check),
+     Decline (x, opens the reason panel), Share. The old "Approve &
+     Share" combo button is gone — Share is its own standalone
+     action (shareTask()) that works the same whether the task is
+     still Pending or already Active, since sharing doesn't depend
+     on approval state. It uses the Web Share API on mobile (falls
+     back to clipboard copy on desktop) and links to the general
+     Earn feed rather than a specific task, since earn.html doesn't
      currently read a ?task= query param to deep-link or highlight
      one card — say the word if you'd like that added so the
      shared link jumps straight to the approved task.
 
+   - Active tab now shows the same Share icon alongside Hide/Unhide
+     and Delete (it was missing here before — Pending and Active
+     both offer it now).
+
    - Tab counts use getCountFromServer (one aggregate read per
      badge) and don't live-update — reopen the tab or refresh the
-     page to see a count change from another admin's action. Each
-     list itself is paginated (15/page, "Load more") rather than a
-     realtime listener, matching the Load-more convention already
-     used on User Management.
+     page to see a count change from another admin's action.
 
    - Active tab's Hide/Unhide only flips the `hidden` field, which
      is exactly what earn.js's live query already filters on
@@ -855,39 +922,30 @@ onAuthStateChanged(auth, async (user) => {
      side of the task lifecycle, not an admin action), so this tab
      will stay empty until that's wired up elsewhere.
 
-   - Decline now refunds the employer's full totalCost immediately
-     in the same transaction as the status change (a change from
-     this page's first version, which left refunds to the
-     employer's own delete flow). This means track-posted-tasks.js's
-     existing "delete a pending_review/declined task = full refund"
-     logic needs to stop refunding declined tasks on delete, or an
-     employer who deletes a task admin already declined would be
-     refunded twice — pending_review tasks (never touched by admin)
-     should keep refunding in full on delete as before. This mirrors
-     how track-posted-ads.js already correctly handles the ads side
-     (its delete flow explicitly does NOT refund a declined ad,
-     since the balance already came back at decline time) — tasks
-     just needs the same fix applied.
+   - Decline refunds the employer's full totalCost immediately in
+     the same transaction as the status change. track-posted-
+     tasks.js's own delete flow must NOT refund again for a
+     declined task (it already doesn't — see that file's notes) or
+     an employer who deletes a task admin already declined would be
+     refunded twice. This mirrors how track-posted-ads.js already
+     correctly handles the ads side.
 
-   - Active tab now has a Delete action alongside Hide/Unhide, for
-     when admin needs to pull a live task down directly rather than
-     via the employer. It refunds only the unfilled balance —
-     (workersRequired - slotsFilled) * amountPerWorker — since
-     filled slots are treated as spent and non-refundable, then
-     permanently deletes the task doc. This is the same math the
-     employer's own "delete an active task" flow on Track Posted
-     Tasks is expected to use, so an admin delete and an employer
-     delete of the same active task refund identically.
+   - Active tab's Delete action (and the employer's equivalent on
+     Track Posted Tasks) now refunds only the *workers' own share*
+     of the unfilled balance — (workersRequired - slotsFilled) *
+     workerPayout — not the old (…) * amountPerWorker, which was
+     wrongly including TaskNOVA's per-worker platform fee in the
+     refund. The platform fee (and any urgent-placement fee) is
+     never refundable, matching the same rule Pending's decline
+     already followed. workerPayout falls back to amountPerWorker
+     minus platformFee for any older task doc that predates the
+     workerPayout field.
 
-   - Declined tasks still show no refund messaging distinct from
-     ads' declined view, since track-posted-tasks.js's copy for
-     declined tasks wasn't shown here — worth checking that page's
-     wording now says the balance was already refunded, matching
-     what actually happens.
-
-   - Task Requests' Mark Resolved doesn't create or convert
-     anything into a real task automatically — per the spec it's
-     admin's judgment call whether/how to support the request, so
-     resolving here is just a status + optional note for the
-     admin's own tracking.
+   - Task Requests' Mark Resolved now requires an explicit
+     Approved/Rejected verdict (a <select>, not just free text) —
+     the resolution note is still optional and just adds context.
+     The verdict shows as a colored tag on the card and in its
+     detail view. This still doesn't create or convert anything
+     into a real task automatically — per the spec it's admin's
+     judgment call whether/how to support the request.
    =========================================================== */
