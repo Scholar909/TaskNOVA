@@ -342,7 +342,6 @@ async function sendAdminTaskPostedAlert(taskData, employerInfo) {
    --------------------------------------------------------- */
 const PROOF_SETS = {
   follow: ["Screenshot showing you followed/joined", "Your username or handle used"],
-  share: ["Screenshot of your share/post", "Link to the post (if public)"],
   visit: ["Screenshot showing the page you visited"],
   feedback: ["Written feedback (at least 30 words)"],
   test: ["Screenshot(s) taken while testing", "Written notes on what you found"],
