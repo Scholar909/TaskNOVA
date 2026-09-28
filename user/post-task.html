@@ -261,27 +261,49 @@
             </div>
           </div>
 
-          <!-- Proof -->
+                    <!-- Proof -->
           <div class="form-card reveal delay-3">
-            <h2 class="fc-title">6. Proof required</h2>
+            <div class="fc-header">
+              <h2 class="fc-title">6. Proof required</h2>
+            </div>
+            
             <ul class="proof-list" id="proofList"></ul>
 
-            <div class="screenshot-row">
-              <div class="sr-text">
-                <strong>Require screenshot proof</strong>
-                <span>Workers must attach screenshot(s) with their submission.</span>
+            <div class="screenshot-block">
+              <div class="screenshot-row">
+                <div class="sr-text">
+                  <strong>Require screenshot proof</strong>
+                  <span>Workers must attach screenshot(s) with their submission.</span>
+                </div>
+                <button type="button" class="pref-switch" id="screenshotSwitch" role="switch" aria-checked="true">
+                  <span class="ps-knob"></span>
+                </button>
               </div>
-              <button type="button" class="pref-switch" id="screenshotSwitch" role="switch" aria-checked="true">
-                <span class="ps-knob"></span>
-              </button>
-            </div>
 
-            <div class="stepper-row" id="screenshotStepperRow">
-              <span class="stepper-label">Screenshots required</span>
-              <div class="stepper">
-                <button type="button" class="stepper-btn" id="screenshotMinus" aria-label="Decrease">−</button>
-                <span class="stepper-value" id="screenshotCount">1</span>
-                <button type="button" class="stepper-btn" id="screenshotPlus" aria-label="Increase">+</button>
+              <div class="stepper-row" id="screenshotStepperRow">
+                <span class="stepper-label">Screenshots required</span>
+                <div class="stepper">
+                  <button type="button" class="stepper-btn" id="screenshotMinus" aria-label="Decrease">−</button>
+                  <span class="stepper-value" id="screenshotCount">1</span>
+                  <button type="button" class="stepper-btn" id="screenshotPlus" aria-label="Increase">+</button>
+                </div>
+              </div>
+
+              <div class="example-screenshot-row" id="screenshotExampleRow">
+                <div class="example-header-row">
+                  <div class="sr-text">
+                    <strong>Example screenshot(s)</strong>
+                    <span>Show workers exactly what to capture — e.g. the specific page or confirmation screen.</span>
+                  </div>
+                  <span class="optional-tag">optional</span>
+                </div>
+
+                <label class="example-upload-btn" for="exampleScreenshotInput">
+                  <i class="bx bx-image-add"></i> Upload example screenshot
+                </label>
+                <input type="file" id="exampleScreenshotInput" accept="image/*" multiple hidden>
+                
+                <ul class="example-screenshot-list" id="exampleScreenshotList"></ul>
               </div>
             </div>
           </div>
@@ -306,13 +328,6 @@
               <label for="workersRequired">How many workers</label>
               <input type="number" id="workersRequired" min="5" step="1" value="5" required>
               <span class="field-note">Minimum 5 workers per task.</span>
-            </div>
-
-            <div class="w-field">
-              <label for="taskLocation">Location</label>
-              <select id="taskLocation">
-                <option value="Nationwide">Nationwide (anyone can do this)</option>
-              </select>
             </div>
           </div>
 

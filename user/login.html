@@ -1610,7 +1610,7 @@ usernameInput.addEventListener("blur", () => {
           }
         }
 
-        if (!user.emailVerified) {
+                if (!user.emailVerified) {
           pendingUnverifiedUser = user;
           showMsg(loginMsg, "error", "Please verify your email before logging in. Check your inbox for the link.");
           resendVerifyBtn.style.display = "inline";
@@ -1627,6 +1627,24 @@ usernameInput.addEventListener("blur", () => {
         setLoading(loginSubmit, false);
       }
       syncHeight();
+    });
+
+    /* ---------------------------------------------------------
+       AUTO-REDIRECT LOGGED IN USERS TO DASHBOARD
+       --------------------------------------------------------- */
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user && user.emailVerified) {
+        try {
+          const userSnap = await getDoc(doc(db, "users", user.uid));
+          if (userSnap.exists() && !userSnap.data().blocked) {
+            window.location.href = "home.html";
+          }
+        } catch (err) {
+          console.error("Auto-redirect session check failed:", err);
+        }
+      }
     });
 
     resendVerifyBtn.addEventListener("click", async () => {
