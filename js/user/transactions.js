@@ -497,6 +497,14 @@ function getTxDisplayTitle(tx) {
   return meta.label;
 }
 
+// Titles can contain user-typed text (e.g. a task title), so escape
+// before putting one into innerHTML.
+function escapeTxText(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
 function renderTxItem(tx) {
   const kind = tx.direction === "credit" ? "credit" : tx.direction === "pending" ? "pending" : "debit";
   const meta = metaFor(tx.type);
@@ -537,6 +545,7 @@ function renderTxItem(tx) {
   } else {
     detailsRowsHtml = `
       <div class="tx-detail-row"><span>Type</span><span>${meta.label}</span></div>
+      ${tx.title ? `<div class="tx-detail-row"><span>Reason</span><span style="text-align:right;word-break:break-word;">${escapeTxText(tx.title)}</span></div>` : ""}
       ${tx.bankName ? `<div class="tx-detail-row"><span>Bank Name</span><span>${tx.bankName}</span></div>` : ""}
       ${tx.accountNumber ? `<div class="tx-detail-row"><span>Account Number</span><span>${tx.accountNumber}</span></div>` : ""}
       ${tx.accountName ? `<div class="tx-detail-row"><span>Account Name</span><span>${tx.accountName}</span></div>` : ""}
@@ -544,7 +553,7 @@ function renderTxItem(tx) {
       <div class="tx-detail-row"><span>Date &amp; time</span><span>${formatFullDateTime(tx.date)}</span></div>
       ${tx.balanceType ? `<div class="tx-detail-row"><span>Balance affected</span><span>${tx.balanceType}</span></div>` : ""}
       ${tx.description ? `<div class="tx-detail-row"><span>Details</span><span>${tx.description}</span></div>` : ""}
-      <div class="tx-detail-row"><span>Reference</span><span>${tx.reference || "N/A"}</span></div>
+      <div class="tx-detail-row"><span>Reference</span><span>${tx.reference || "wallet related"}</span></div>
     `;
   }
 

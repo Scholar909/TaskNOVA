@@ -689,14 +689,17 @@ screenshotPlus.addEventListener("click", () => {
    --------------------------------------------------------- */
 const exampleScreenshotInput = document.getElementById("exampleScreenshotInput");
 const exampleScreenshotList = document.getElementById("exampleScreenshotList");
+const exampleUploadBtn = document.getElementById("exampleUploadBtn");
+const exampleCountEl = document.getElementById("exampleCount");
 let exampleScreenshots = []; // [{ url, name }]
 
 function renderExampleScreenshots() {
   exampleScreenshotList.innerHTML = exampleScreenshots.map((ex, idx) => `
-    <li>
-      <img src="${ex.url}" alt="">
-      <span>${ex.name}</span>
-      <button type="button" data-idx="${idx}" aria-label="Remove"><i class="bx bx-x"></i></button>
+    <li class="example-thumb">
+      <img src="${ex.url}" alt="Example screenshot ${idx + 1}" loading="lazy">
+      <button type="button" class="example-thumb-remove" data-idx="${idx}" aria-label="Remove this example">
+        <i class="bx bx-x"></i>
+      </button>
     </li>
   `).join("");
   exampleScreenshotList.querySelectorAll("button[data-idx]").forEach((btn) => {
@@ -706,6 +709,13 @@ function renderExampleScreenshots() {
       renderExampleScreenshots();
     });
   });
+
+  if (exampleCountEl) exampleCountEl.textContent = `${exampleScreenshots.length}/${SCREENSHOT_MAX}`;
+  if (exampleUploadBtn) {
+    const maxed = exampleScreenshots.length >= SCREENSHOT_MAX;
+    exampleUploadBtn.classList.toggle("maxed", maxed);
+    exampleUploadBtn.querySelector(".eub-label").textContent = maxed ? "Maximum reached" : "Upload example screenshot";
+  }
 }
 
 function clearExampleScreenshots() {
@@ -917,12 +927,13 @@ postTaskForm.addEventListener("submit", async (e) => {
   if (!currentUser) return;
 
   const { grandTotal } = updateCostSummary();
-  // Editing an already-charged task (mode "edit"/"editapproved") only
-  // charges/refunds the *difference* from what was paid when it was
-  // first posted. A draft has a totalCost field too (buildTaskData
-  // always computes one) but was never actually charged, so treat it
-  // — like a brand-new post — as having nothing paid yet.
-  const alreadyCharged = editContext && editContext.mode !== "draft";
+  // Only editing an *approved* (live) task (mode "editapproved") is
+  // billed as a difference — its money was taken at approval and is
+  // still held. Drafts were never charged, and declined tasks (mode
+  // "edit") were refunded IN FULL the moment admin declined them, so
+  // both count as having nothing paid: they're charged the full new
+  // total, exactly like a brand-new post.
+  const alreadyCharged = !!editContext && editContext.mode === "editapproved";
   const previousTotal = alreadyCharged ? (editContext.original.totalCost || 0) : 0;
   const delta = grandTotal - previousTotal;
 
@@ -975,10 +986,13 @@ postTaskForm.addEventListener("submit", async (e) => {
         ? "Changes submitted — this task is back in admin review and off the Earn feed until it's re-approved."
         : "Task updated and resubmitted for review.");
     } else {
-      // Brand-new task, or a draft's first real submission (updates
-      // the draft's existing doc instead of creating a second one).
+      // Brand-new task, a draft's first real submission, or a declined
+      // task being reposted — the last two update their existing doc
+      // instead of creating a second one. All three are charged the
+      // full total (a declined task was refunded in full already).
       const taskRef = editContext ? doc(db, "tasks", editContext.taskId) : doc(collection(db, "tasks"));
-
+      const isDeclinedRepost = !!editContext && editContext.mode === "edit";
+      
       await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(userRef);
         if (!snap.exists()) throw new Error("Account not found.");
@@ -987,13 +1001,21 @@ postTaskForm.addEventListener("submit", async (e) => {
         if (taskData.totalCost > deposit) throw new Error("Your Deposit Balance is too low to post this task.");
 
         transaction.update(userRef, { "wallet.deposit": deposit - taskData.totalCost });
-        transaction.set(taskRef, taskData);
+        // update() (not set()) when the doc already exists, so a declined
+        // task keeps its declineHistory / declinedAt when it's reposted.
+        if (editContext) {
+          transaction.update(taskRef, taskData);
+        } else {
+          transaction.set(taskRef, taskData);
+        }
 
         const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
         transaction.set(txRef, {
           type: "task_post",
           direction: "debit",
-          title: `Posted task: ${taskData.title}`,
+          title: isDeclinedRepost
+            ? `Resubmitted task: ${taskData.title}`
+            : `Posted task: ${taskData.title}`,
           amount: taskData.totalCost,
           status: "successful",
           createdAt: serverTimestamp()

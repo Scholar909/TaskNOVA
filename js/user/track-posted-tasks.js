@@ -317,7 +317,7 @@ const STATUS_LABELS = {
   expired: "Expired"
 };
 
-const MAX_DECLINES = 5;
+const MAX_DECLINES = 3;
 
 /* ---------------------------------------------------------
    FORMAT HELPERS
@@ -529,6 +529,22 @@ function renderTaskDetail(taskId) {
     <div class="td-meta-row">
       <span class="td-tag"><i class="bx ${meta.icon}"></i> ${meta.label}</span>
       ${task.urgent ? `<span class="td-tag"><i class="bx bx-bolt"></i> Urgent</span>` : ""}
+    </div>
+    ${(task.proofRequirements || []).length ? `
+    <div class="td-section">
+      <h3>Proof requirements</h3>
+      <div class="td-proof-list">${task.proofRequirements.map((p) => `<span>${escapeHtml(p)}</span>`).join("")}</div>
+    </div>` : ""}
+    <div class="td-section">
+      <h3>Screenshot proof</h3>
+      <div class="td-screenshot-info">
+        <i class="bx ${task.screenshotRequired ? "bx-image" : "bx-image-alt"}"></i>
+        <span>${task.screenshotRequired ? `<strong>${task.screenshotCount || 0}</strong> screenshot${(task.screenshotCount || 0) === 1 ? "" : "s"} required from each worker` : "Not required for this task"}</span>
+      </div>
+      ${(task.exampleScreenshots || []).length ? `
+      <div class="td-example-gallery">
+        ${task.exampleScreenshots.map((url) => `<img src="${escapeHtml(url)}" alt="Example screenshot" loading="lazy" onclick="window.open('${escapeHtml(url)}','_blank')">`).join("")}
+      </div>` : ""}
     </div>
   `;
 
