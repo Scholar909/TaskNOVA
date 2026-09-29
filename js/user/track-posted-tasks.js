@@ -883,20 +883,58 @@ async function getDocsOnce(q) {
 }
 
 /* ---------------------------------------------------------
-   DELETE (with refund for unused slots — never for used ones)
+   DELETE (with refund for unused slots & edited task additions)
    --------------------------------------------------------- */
+function calculateTaskRefund(data) {
+  if (data.status === "draft" || data.status === "declined" || data.status === "expired") {
+    return 0; // drafts charged nothing; declined/expired refunded at time of occurrence
+  }
+
+  // Handle tasks currently sitting in "pending_review"
+  if (data.status === "pending_review") {
+    if (data.isEditResubmission) {
+      // If an active task was edited and resubmitted:
+      // 1. Refund the entire new addition amount that was deducted during edit (pending re-approval)
+      const editAddition = data.editCostAddition || 0;
+
+      // 2. Compute remaining worker slots from BEFORE the edit was made
+      const prevTotal = data.previousWorkersRequired ?? (data.workersRequired ?? 0);
+      const filled = data.slotsFilled ?? 0;
+      const remainingUnfilledSlots = Math.max(0, prevTotal - filled);
+
+      // 3. Worker payout rate per slot (excluding platform fee)
+      const workerPayout = data.previousWorkerPayout ?? (data.workerPayout ?? Math.max(0, (data.amountPerWorker || 0) - (data.platformFee || 0)));
+
+      const unfilledSlotsRefund = remainingUnfilledSlots * workerPayout;
+
+      return editAddition + unfilledSlotsRefund;
+    }
+
+    // Standard initial pending review task (never active yet)
+    return data.totalCost || 0;
+  }
+
+  // Handle active or completed tasks
+  if (data.status === "active" || data.status === "completed") {
+    const total = data.workersRequired ?? 0;
+    const filled = data.slotsFilled ?? 0;
+    const remaining = Math.max(0, total - filled);
+    const workerPayout = data.workerPayout ?? Math.max(0, (data.amountPerWorker || 0) - (data.platformFee || 0));
+
+    return remaining * workerPayout;
+  }
+
+  return 0;
+}
+
 function wireDelete(taskId, hasRefund) {
   document.getElementById(`deleteBtn-${taskId}`)?.addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     const task = taskDocsMap.get(taskId);
     if (!task) return;
 
-    const filled = task.slotsFilled ?? 0;
-    const total = task.workersRequired ?? 0;
-
-    if (task.status === "active") {
-      // Block delete while submissions are still pending, per the doc's
-      // Active Task Restrictions.
+    if (task.status === "active" || (task.status === "pending_review" && task.isEditResubmission)) {
+      // Block delete while submissions are still pending, per Active Task Restrictions
       const pendingSnap = await getDocsOnce(
         query(collection(db, "tasks", taskId, "submissions"), where("status", "==", "pending"))
       );
@@ -906,19 +944,10 @@ function wireDelete(taskId, hasRefund) {
       }
     }
 
-    let refund = 0;
-    if (task.status === "pending_review") {
-      refund = task.totalCost || 0;
-    } else if (task.status === "active" || task.status === "completed") {
-      refund = Math.max(0, total - filled) * (task.workerPayout ?? Math.max(0, (task.amountPerWorker || 0) - (task.platformFee || 0)));
-    }
-    // draft tasks were never charged, declined tasks were already refunded
-    // in full at the moment admin declined them, and expired tasks were
-    // already refunded automatically when they expired — none of those
-    // get another refund here.
+    const refund = calculateTaskRefund(task);
 
     const confirmMsg = refund > 0
-      ? `Delete this task? ${formatNaira(refund)} for unused slots will be refunded to your Deposit Balance. This can't be undone.`
+      ? `Delete this task? ${formatNaira(refund)} will be refunded to your Deposit Balance. This can't be undone.`
       : `Delete this task? This can't be undone.`;
 
     if (!window.confirm(confirmMsg)) return;
@@ -934,23 +963,8 @@ function wireDelete(taskId, hasRefund) {
         if (!taskSnap.exists()) throw new Error("Task not found.");
         const data = taskSnap.data();
 
-        let refundAmount = 0;
-        if (data.status === "draft" || data.status === "declined") {
-          refundAmount = 0; // declined tasks were already refunded in full at decline time
-        } else if (data.status === "pending_review") {
-          refundAmount = data.totalCost || 0; // never went live — nothing was spent, refund everything
-        } else if (data.status === "active" || data.status === "completed") {
-          // Only the workers' own share of each unfilled slot comes back;
-          // TaskNOVA's per-worker platform fee is never refundable.
-          const remaining = Math.max(0, (data.workersRequired ?? 0) - (data.slotsFilled ?? 0));
-          refundAmount = remaining * (data.workerPayout ?? Math.max(0, (data.amountPerWorker || 0) - (data.platformFee || 0)));
-        }
+        const refundAmount = calculateTaskRefund(data);
 
-        // Firestore transactions require every read to happen before the
-        // first write — the wallet read below used to come AFTER the task
-        // update, which made every refunding delete (pending/active) throw
-        // and roll back. Drafts (no refund, no wallet read) were unaffected,
-        // which is why only those appeared to work.
         const userRef = doc(db, "users", currentUser.uid);
         let deposit = 0;
         if (refundAmount > 0) {
