@@ -39,7 +39,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const MAX_DECLINES = 5;
+const MAX_DECLINES = 3;
 const PAGE_SIZE = 15;
 
 /* ---------------------------------------------------------
@@ -417,7 +417,17 @@ async function renderTaskCard(taskId, task, tabKey) {
       <div class="tc-detail-row"><strong>Instructions</strong><p>${escapeHtml(task.instructions || "—")}</p></div>
       <div class="tc-detail-row"><strong>Task link</strong><p><a class="tc-link" href="${escapeHtml(task.taskLink || "#")}" target="_blank" rel="noopener">${escapeHtml(task.taskLink || "—")} <i class="bx bx-link-external"></i></a></p></div>
       <div class="tc-detail-row"><strong>Proof requirements</strong><div class="tc-proof-list">${(task.proofRequirements || []).map((p) => `<span>${escapeHtml(p)}</span>`).join("") || "<span>—</span>"}</div></div>
-      <div class="tc-detail-row"><strong>Screenshots required</strong><p>${task.screenshotRequired ? `Yes — ${task.screenshotCount || 0}` : "No"}</p></div>
+      <div class="tc-detail-row">
+        <strong>Screenshot proof</strong>
+        <div class="tc-screenshot-info">
+          <i class="bx ${task.screenshotRequired ? "bx-image" : "bx-image-alt"}"></i>
+          <span>${task.screenshotRequired ? `<strong>${task.screenshotCount || 0}</strong> screenshot${(task.screenshotCount || 0) === 1 ? "" : "s"} required from workers` : "Not required for this task"}</span>
+        </div>
+        ${(task.exampleScreenshots || []).length ? `
+        <div class="tc-example-gallery">
+          ${task.exampleScreenshots.map((url) => `<img src="${escapeHtml(url)}" alt="Example screenshot" loading="lazy" onclick="window.open('${escapeHtml(url)}','_blank')">`).join("")}
+        </div>` : ""}
+      </div>
       <div class="tc-detail-row"><strong>Cost breakdown</strong><p>${formatNaira(task.amountPerWorker)} × ${task.workersRequired || 0} workers${task.urgent ? ` + ${formatNaira(task.urgentFee)} urgent fee` : ""} = <strong>${formatNaira(task.totalCost)}</strong> reserved</p></div>
       ${tabKey === "declined" && (task.declineHistory || []).length ? `
       <div class="tc-detail-row"><strong>Decline history</strong>
@@ -436,7 +446,7 @@ async function renderTaskCard(taskId, task, tabKey) {
 
   if (tabKey === "pending") {
     actionSlot.innerHTML = `
-      <div class="tc-actions">
+      <div class="tc-pending-actions">
         <button type="button" class="btn btn-success btn-icon-only" data-act="approve" title="Approve" aria-label="Approve"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label sr-only">Approve</span></button>
         <button type="button" class="btn btn-danger btn-icon-only" data-act="decline-toggle" title="Decline" aria-label="Decline"><i class="bx bx-x"></i><span class="btn-label sr-only">Decline</span></button>
         <button type="button" class="btn btn-share btn-icon-only" data-act="share" title="Share" aria-label="Share"><i class="bx bx-share-alt"></i><span class="btn-label sr-only">Share</span></button>
