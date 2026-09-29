@@ -465,6 +465,47 @@ img { display: block; max-width: 100%; }
   font-weight: 700;
 }
 
+.td-proof-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.td-proof-list span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: .72rem;
+  color: var(--text-soft);
+}
+
+.td-screenshot-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: .8rem;
+  color: var(--text-soft);
+}
+.td-screenshot-info i { flex-shrink: 0; font-size: 1.15rem; color: var(--primary); }
+.td-screenshot-info strong { color: var(--text); }
+
+.td-example-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.td-example-gallery img {
+  width: 66px;
+  height: 66px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: transform .2s var(--ease), border-color .2s ease;
+}
+.td-example-gallery img:hover { transform: scale(1.06); border-color: rgba(22,128,255,.4); }
+
 /* ---------- ACTION BUTTONS ---------- */
 .action-row {
   display: flex;
