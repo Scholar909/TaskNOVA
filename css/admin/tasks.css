@@ -447,13 +447,54 @@ img { display: block; max-width: 100%; }
 .tc-proof-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .tc-proof-list span { padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: .7rem; color: var(--text-soft); }
 
+.tc-screenshot-info {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-size: .8rem;
+  color: var(--text-soft);
+}
+.tc-screenshot-info i { flex-shrink: 0; font-size: 1.15rem; color: var(--primary); }
+.tc-screenshot-info strong, .tc-screenshot-info span { color: var(--text); }
+
+.tc-example-gallery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.tc-example-gallery img {
+  width: 66px;
+  height: 66px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: transform .2s var(--ease), border-color .2s ease;
+}
+.tc-example-gallery img:hover { transform: scale(1.06); border-color: rgba(22,128,255,.4); }
+
 .decline-history-list { display: grid; gap: 6px; list-style: none; }
 .decline-history-list li { display: flex; gap: 7px; font-size: .8rem; color: var(--text); }
 .decline-history-list li i { color: var(--danger); flex-shrink: 0; margin-top: 2px; font-size: .85rem; }
 
 /* actions */
-.tc-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
-.tc-actions .btn { width: 100%; min-width: 0; }
+.tc-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.tc-actions .btn { flex: 1; min-width: 110px; }
+.tc-pending-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.tc-pending-actions .btn {
+  width: 100%;
+  min-width: 0;
+}
+
 
 /* decline reason slide */
 .tc-decline-panel {
