@@ -587,6 +587,96 @@ img { display: block; max-width: 100%; }
 .banner-stat-box .bsb-label { font-size: .64rem; color: var(--text-soft); text-transform: uppercase; letter-spacing: .03em; font-weight: 700; }
 .banner-stat-box .bsb-value { margin-top: 3px; font-size: .92rem; font-weight: 700; }
 
+/* ---------- BANNER PANEL: section headers ---------- */
+.dash-card-head { margin-bottom: 10px; }
+.dash-card-head h2 { font-size: .96rem; letter-spacing: -.01em; }
+.dash-card-head p { margin-top: 3px; font-size: .78rem; color: var(--text-soft); }
+
+/* ---------- LIVE 3-SLOT PREVIEW ---------- */
+.banner-preview-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .banner-preview-row { grid-template-columns: 1fr; }
+}
+.banner-preview-box { display: grid; gap: 6px; }
+.bp-slot-label { font-size: .68rem; font-weight: 700; color: var(--text-soft); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Fixed 3:1 shape, whatever the box's actual width ends up being —
+   matches the live banner slot itself (see post-*.js's mountBanners,
+   whenever that's built, for the real on-page version of this box). */
+.banner-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.banner-preview img, .banner-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.banner-preview.default { background: linear-gradient(135deg, rgba(0,103,255,.10), rgba(19,205,229,.10)); }
+.bp-fallback-text {
+  padding: 0 10px;
+  text-align: center;
+  font-size: .74rem;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+/* ---------- DEFAULT BANNER CARD ---------- */
+.default-banner-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.db-preview {
+  flex-shrink: 0;
+  width: 96px;
+  aspect-ratio: 3 / 1;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-solid);
+}
+.db-preview img { width: 100%; height: 100%; object-fit: cover; }
+.db-preview.default { background: linear-gradient(135deg, rgba(0,103,255,.10), rgba(19,205,229,.10)); }
+.db-preview .bp-fallback-text { font-size: .6rem; }
+.db-info { flex: 1; min-width: 0; }
+.db-info strong { display: block; font-size: .86rem; }
+.db-info span { display: block; margin-top: 2px; font-size: .72rem; color: var(--text-soft); }
+
+/* ---------- EMPTY BANNER SLOT PLACEHOLDERS ---------- */
+.empty-slot-cards { display: grid; gap: 10px; margin-top: 10px; }
+.empty-slot-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 14px;
+  color: var(--text-soft);
+  font-size: .8rem;
+}
+.empty-slot-card i { font-size: 1.2rem; color: var(--text-soft); flex-shrink: 0; }
+
+
 /* ---------- TOAST ---------- */
 .toast {
   position: fixed;
