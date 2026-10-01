@@ -366,8 +366,6 @@ function ringSVG(filled, total, size, stroke) {
 const PAGE_SIZE = 10;
 
 let currentUser = null;
-let userLocation = null;
-let activeLocation = "All";
 let activeCategory = "all";
 
 let taskDocsMap = new Map();   // taskId -> task data (live, across all loaded pages)
@@ -385,7 +383,6 @@ let justSubmittedTaskId = null; // suppress the "filled" toast for your own subm
 const taskList = document.getElementById("taskList");
 const loadMoreWrap = document.getElementById("loadMoreWrap");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
-const locationFilterScroll = document.getElementById("locationFilterScroll");
 const categoryFilterScroll = document.getElementById("categoryFilterScroll");
 const slotToast = document.getElementById("slotToast");
 const slotToastText = document.getElementById("slotToastText");
@@ -533,10 +530,9 @@ async function renderTaskDetail(taskId) {
         <p>${task.instructions}</p>
       </div>` : ""}
 
-    ${task.urgent || task.location ? `
+    ${task.urgent ? `
       <div class="td-tags-row">
-        ${task.urgent ? `<span class="td-tag"><i class="bx bx-bolt"></i> Urgent</span>` : ""}
-        ${task.location ? `<span class="td-tag"><i class="bx bx-map-pin"></i> ${task.location}</span>` : ""}
+        <span class="td-tag"><i class="bx bx-bolt"></i> Urgent</span>
       </div>` : ""}
 
     <button type="button" class="do-task-btn" id="doTaskBtn-${taskId}">
@@ -810,7 +806,6 @@ function subscribeNextPage() {
     where("full", "==", false)
   ];
   if (activeCategory !== "all") constraints.push(where("category", "==", activeCategory));
-  if (activeLocation !== "All") constraints.push(where("location", "==", activeLocation));
 
   constraints.push(orderBy("createdAt", "desc"));
   if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
@@ -910,15 +905,6 @@ categoryFilterScroll.addEventListener("click", (e) => {
   resetFeed();
 });
 
-locationFilterScroll.addEventListener("click", (e) => {
-  const chip = e.target.closest(".filter-chip");
-  if (!chip || chip.dataset.location === activeLocation) return;
-  locationFilterScroll.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
-  chip.classList.add("active");
-  activeLocation = chip.dataset.location;
-  resetFeed();
-});
-
 /* ---------------------------------------------------------
    AUTH GUARD
    --------------------------------------------------------- */
@@ -953,21 +939,10 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide — show the
+    // username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
-
-    // "All + user's location" — add their own location as a quick filter chip
-    if (data.institutionAbbr && userLocation !== data.institutionAbbr) {
-      userLocation = data.institutionAbbr;
-      if (!locationFilterScroll.querySelector(`[data-location="${userLocation}"]`)) {
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "filter-chip";
-        chip.dataset.location = userLocation;
-        chip.innerHTML = `<i class="bx bx-map-pin"></i> ${userLocation}`;
-        locationFilterScroll.appendChild(chip);
-      }
-    }
   }, (err) => {
     console.error("User doc listener error:", err);
   });
@@ -1001,14 +976,11 @@ onAuthStateChanged(auth, (user) => {
    - A submission reserves a slot immediately (slotsFilled++ in the
      same transaction that writes the submission doc) rather than
      waiting for approval — that's what makes "task disappears the
-     moment slots run out" possible. Employer approval/decline is a
-     separate, not-yet-built flow (Track Posted Tasks) that must:
-       - Decline: slotsFilled--, full = false, delete/mark the
-         submission declined so the worker could theoretically be
-         allowed to resubmit if that's ever wanted.
-       - Approve: leave slotsFilled as-is, mark submission approved,
-         release the worker's payout from the employer's already-
-         reserved funds.
+     moment slots run out" possible. Employer approval/decline lives
+     on Track Posted Tasks' Active tab (already built): Decline does
+     slotsFilled--, full = false; Approve leaves slotsFilled as-is
+     and releases the worker's payout. Nothing here needs to change
+     for either.
 
    - One submission per worker per task is enforced by using the
      worker's uid as the submission doc ID (tasks/{id}/submissions/
@@ -1017,10 +989,13 @@ onAuthStateChanged(auth, (user) => {
      transaction (transaction.get on the sub ref) so a race between
      two rapid clicks can't double-submit.
 
-   - Filtering by category/location/full/status/hidden together
-     needs a composite index — Firestore's console error the first
-     time each filter combination runs includes a direct link to
-     create it. Normal, one-time, not a bug.
+   - Filtering by category/full/status/hidden together needs a
+     composite index — Firestore's console error the first time
+     each filter combination runs includes a direct link to create
+     it. Normal, one-time, not a bug. Location is no longer part of
+     that filter set (accountType/institutionAbbr, and the location
+     concept generally, are retired site-wide — the only filter
+     left is category).
 
    - Submission docs now carry taskId/taskTitle/category/
      amountPerWorker/employerUid alongside the proof itself — that

@@ -12,6 +12,8 @@ import {
 import {
   getFirestore,
   doc,
+  getDoc,
+  updateDoc,
   onSnapshot,
   collection,
   query,
@@ -20,12 +22,6 @@ import {
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-storage.js";
 import { initAuthGuard } from "./auth-guard.js";
 
 const firebaseConfig = {
@@ -40,7 +36,12 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
+
+// TODO: fill in this account's real values (Cloudinary dashboard ->
+// Settings -> Upload -> Upload presets; the preset must be "Unsigned").
+// Every upload below will fail with these placeholders in place.
+const CLOUDINARY_CLOUD_NAME = "your-cloud-name";
+const CLOUDINARY_UPLOAD_PRESET = "tasknova_unsigned";
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
@@ -324,15 +325,19 @@ const MAX_BANNER_SLOTS = 3;
    must be landscape and must never exceed this box. Smaller
    is always fine; these are ceilings, not targets.
 
-   NOTE: maxWidth/maxHeight/minAspectRatio describe the actual
-   banner slot on the live site. If that slot's real pixel size
-   ever changes, update the three numbers below — everything
-   else (labels, checklist, validation) reads from them.
+   NOTE: maxWidth/maxHeight are the live banner slot's absolute
+   ceiling — 3000×1000, a 3:1 shape, per spec (30-day banner ratio
+   "3:1, max being 3000:1000"). The banner box itself is a fixed
+   3:1 strip that scales down to fit its actual on-page height, so
+   any image/video at exactly 3:1 fits perfectly regardless of its
+   own resolution; aspectTolerance allows a little rounding slack
+   (e.g. 1199×400) rather than rejecting near-exact matches.
    --------------------------------------------------------- */
 const BANNER_MEDIA_SPECS = {
-  maxWidth: 1200,
-  maxHeight: 300,
-  minAspectRatio: 3, // width must be at least 3x the height — a wide banner shape
+  maxWidth: 3000,
+  maxHeight: 1000,
+  aspectRatio: 3, // exactly 3:1 (width:height)
+  aspectTolerance: 0.04, // ±4%
   image: {
     types: ["image/webp", "image/jpeg", "image/jpg", "image/png"],
     typeLabel: "WebP, JPG or PNG",
@@ -434,8 +439,8 @@ function setBannerMode(isBanner) {
   mediaSpecsNote.style.display = isBanner ? "flex" : "none";
   if (isBanner && !mediaSpecsList.dataset.filled) {
     mediaSpecsList.innerHTML = `
-      <li><i class="bx bx-image"></i> Image — ${BANNER_MEDIA_SPECS.image.typeLabel}, up to ${BANNER_MEDIA_SPECS.maxWidth}×${BANNER_MEDIA_SPECS.maxHeight}px, wide (landscape) shape.</li>
-      <li><i class="bx bx-video"></i> Video — ${BANNER_MEDIA_SPECS.video.typeLabel}, up to ${BANNER_MEDIA_SPECS.video.maxDurationSec}s, up to ${BANNER_MEDIA_SPECS.video.maxSizeMB}MB, up to ${BANNER_MEDIA_SPECS.video.maxHeightPx}p, same wide shape.</li>
+      <li><i class="bx bx-image"></i> Image — ${BANNER_MEDIA_SPECS.image.typeLabel}, exactly 3:1 (e.g. 1500×500, up to ${BANNER_MEDIA_SPECS.maxWidth}×${BANNER_MEDIA_SPECS.maxHeight}px).</li>
+      <li><i class="bx bx-video"></i> Video — ${BANNER_MEDIA_SPECS.video.typeLabel}, up to ${BANNER_MEDIA_SPECS.video.maxDurationSec}s, up to ${BANNER_MEDIA_SPECS.video.maxSizeMB}MB, up to ${BANNER_MEDIA_SPECS.video.maxHeightPx}p, same exact 3:1 shape.</li>
       <li><i class="bx bx-check-shield"></i> These are all maximums — smaller, shorter or lighter is always fine.</li>
     `;
     mediaSpecsList.dataset.filled = "true";
@@ -634,8 +639,8 @@ function validateBannerImage(file) {
         sizeLabel: `Under ${BANNER_MEDIA_SPECS.image.maxSizeMB}MB`,
         dimsOk: w <= BANNER_MEDIA_SPECS.maxWidth && h <= BANNER_MEDIA_SPECS.maxHeight,
         dimsLabel: `Fits within ${BANNER_MEDIA_SPECS.maxWidth}×${BANNER_MEDIA_SPECS.maxHeight}px (yours: ${w}×${h}px)`,
-        ratioOk: w >= h * BANNER_MEDIA_SPECS.minAspectRatio,
-        ratioLabel: "Wide, landscape banner shape"
+        ratioOk: Math.abs((w / h) - BANNER_MEDIA_SPECS.aspectRatio) <= BANNER_MEDIA_SPECS.aspectRatio * BANNER_MEDIA_SPECS.aspectTolerance,
+        ratioLabel: `Exactly 3:1 (wide banner shape) — yours: ${(w / h).toFixed(2)}:1`
       });
       resolve({ valid: checks.every((c) => c.pass), checks, url });
     };
@@ -666,8 +671,8 @@ function validateBannerVideo(file) {
         resolutionLabel: `${BANNER_MEDIA_SPECS.video.maxHeightPx}p or lower`,
         dimsOk: w <= BANNER_MEDIA_SPECS.maxWidth && h <= BANNER_MEDIA_SPECS.maxHeight,
         dimsLabel: `Fits within ${BANNER_MEDIA_SPECS.maxWidth}×${BANNER_MEDIA_SPECS.maxHeight}px (yours: ${w}×${h}px)`,
-        ratioOk: w >= h * BANNER_MEDIA_SPECS.minAspectRatio,
-        ratioLabel: "Wide, landscape banner shape"
+        ratioOk: Math.abs((w / h) - BANNER_MEDIA_SPECS.aspectRatio) <= BANNER_MEDIA_SPECS.aspectRatio * BANNER_MEDIA_SPECS.aspectTolerance,
+        ratioLabel: `Exactly 3:1 (wide banner shape) — yours: ${(w / h).toFixed(2)}:1`
       });
       resolve({ valid: checks.every((c) => c.pass), checks, url });
     };
@@ -687,32 +692,55 @@ function startMediaUpload(file, type, previewUrl) {
   isUploadingImage = true;
   uploadedMediaType = type;
 
-  const folder = type === "video" ? "ad-videos" : "ad-images";
-  const path = `${folder}/${currentUser.uid}/${Date.now()}-${file.name}`;
-  const fileRef = storageRef(storage, path);
-  const uploadTask = uploadBytesResumable(fileRef, file);
+  // Cloudinary's unsigned upload endpoint — a plain XHR (not fetch) so we
+  // get real upload.progress events for the bar. resource_type must be
+  // "video" for video files; images (and everything else) use "auto".
+  const resourceType = type === "video" ? "video" : "auto";
+  const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
 
-  uploadTask.on("state_changed",
-    (snapshot) => {
-      const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-      imageUploadFill.style.width = pct + "%";
-      imageUploadPercent.textContent = pct + "%";
-    },
-    (err) => {
-      console.error("Media upload error:", err);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+  formData.append("folder", isBannerMode ? "tasknova/ad-banners" : "tasknova/ad-images");
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", url);
+
+  xhr.upload.addEventListener("progress", (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((e.loaded / e.total) * 100);
+    imageUploadFill.style.width = pct + "%";
+    imageUploadPercent.textContent = pct + "%";
+  });
+
+  xhr.addEventListener("load", () => {
+    isUploadingImage = false;
+    let payload;
+    try { payload = JSON.parse(xhr.responseText); } catch { payload = null; }
+
+    if (xhr.status >= 200 && xhr.status < 300 && payload?.secure_url) {
+      uploadedMediaUrl = payload.secure_url;
+      imageUploadProgress.style.display = "none";
+      imageRemoveBtn.style.display = "flex";
+    } else {
+      console.error("Cloudinary upload failed:", xhr.status, payload);
       showMsg("error", isBannerMode
         ? "Upload failed — please try again."
         : "Image upload failed — you can still post without one, or try again.");
       imageUploadProgress.style.display = "none";
-      isUploadingImage = false;
-    },
-    async () => {
-      uploadedMediaUrl = await getDownloadURL(uploadTask.snapshot.ref);
-      imageUploadProgress.style.display = "none";
-      imageRemoveBtn.style.display = "flex";
-      isUploadingImage = false;
     }
-  );
+  });
+
+  xhr.addEventListener("error", () => {
+    console.error("Cloudinary upload network error");
+    isUploadingImage = false;
+    imageUploadProgress.style.display = "none";
+    showMsg("error", isBannerMode
+      ? "Upload failed — please try again."
+      : "Image upload failed — you can still post without one, or try again.");
+  });
+
+  xhr.send(formData);
 }
 
 adImageInput.addEventListener("change", () => {
@@ -787,7 +815,7 @@ function clearMsg() {
    VALIDATION
    --------------------------------------------------------- */
 function validateForm() {
-  if (!selectedPackage) return "Pick a package first.";
+  if (!editContext?.isActiveEdit && !selectedPackage) return "Pick a package first.";
   if (!adTitleInput.value.trim()) return "Add a title for your ad.";
   if (isBannerMode) {
     if (!uploadedMediaUrl) return "Banner ads need an image or video that meets the specs above.";
@@ -795,9 +823,102 @@ function validateForm() {
     if (!adDescriptionInput.value.trim()) return "Add a short description.";
   }
   if (adLinkInput.value.trim() && !/^https?:\/\//i.test(adLinkInput.value.trim())) return "That link doesn't look right — it should start with http:// or https://";
-  if (!adPriceInput.value || Number(adPriceInput.value) < selectedPackage.price) return "Price looks off — please recheck.";
+  if (!editContext?.isActiveEdit) {
+    if (!adPriceInput.value || Number(adPriceInput.value) < selectedPackage.price) return "Price looks off — please recheck.";
+  }
   if (isUploadingImage) return "Your media is still uploading — please wait a moment.";
   return null;
+}
+
+/* ---------------------------------------------------------
+   EDIT MODE (?edit=adId — from track-posted-ads.js's Edit /
+   Edit & Repost / Repost links)
+
+   Two very different behaviours depending on what's being edited:
+
+   - status "active": the ad is live right now. We must NOT touch
+     the live fields directly — per spec, save the proposed change
+     as a `pendingEdit` object for admin to approve/decline (see
+     admin/advertisements.js's Edit Requests tab). The package/
+     price/duration/views can't be changed here at all (this is a
+     creative-only edit of an already-paid campaign), so those
+     controls are locked and validation skips the price check.
+     No wallet transaction happens either way.
+
+   - status "declined" or "expired": nothing is live, so this is
+     really a fresh submission that happens to reuse the old doc
+     (and its declineHistory, for continuity) — the full form is
+     editable including package/price, and submitting charges the
+     advertiser again in full (declined ads were already refunded;
+     expired ads were never refunded but their guarantee is used
+     up, so a repost is a brand-new campaign in every way that
+     matters) and sets status back to "pending_review".
+   --------------------------------------------------------- */
+let editContext = null; // { adId, original, isActiveEdit }
+
+async function loadEditContextFromURL() {
+  const adId = new URLSearchParams(window.location.search).get("edit");
+  if (!adId) return;
+
+  try {
+    const snap = await getDoc(doc(db, "advertisements", adId));
+    if (!snap.exists() || snap.data().advertiserUid !== currentUser.uid) {
+      showMsg("error", "That advertisement couldn't be found, or doesn't belong to your account.");
+      return;
+    }
+    const original = snap.data();
+    editContext = { adId, original, isActiveEdit: original.status === "active" };
+    prefillFormFromAd(original, editContext.isActiveEdit);
+  } catch (err) {
+    console.error("Load ad for edit error:", err);
+    showMsg("error", "Couldn't load that advertisement for editing. Please try again.");
+  }
+}
+
+function prefillFormFromAd(ad, isActiveEdit) {
+  const isBanner = ad.type === "banner";
+
+  if (isBanner) {
+    const idx = BANNER_PACKAGE.items.findIndex((it) => it.views === ad.guaranteedViews);
+    bannerPackSelect.value = idx > -1 ? String(idx) : "";
+    bannerPackSelect.dispatchEvent(new Event("change"));
+  } else {
+    adDurationSelect.value = ad.type;
+    adDurationSelect.dispatchEvent(new Event("change"));
+    const cat = AD_PACKAGES[ad.type];
+    const idx = cat?.items.findIndex((it) => it.views === ad.guaranteedViews) ?? -1;
+    if (idx > -1) {
+      adPackSelect.value = String(idx);
+      adPackSelect.dispatchEvent(new Event("change"));
+    }
+  }
+
+  adTitleInput.value = ad.title || "";
+  if (!isBanner) adDescriptionInput.value = ad.description || "";
+  adLinkInput.value = ad.link || "";
+
+  const mediaUrl = isBanner ? ad.bannerMediaUrl : ad.imageUrl;
+  const mediaType = isBanner ? (ad.bannerMediaType || "image") : "image";
+  if (mediaUrl) {
+    uploadedMediaUrl = mediaUrl;
+    uploadedMediaType = mediaType;
+    showLocalPreview(mediaType, mediaUrl);
+  }
+
+  if (isActiveEdit) {
+    // Creative-only edit of a live campaign — package/price is fixed.
+    adDurationSelect.disabled = true;
+    adPackSelect.disabled = true;
+    bannerPackSelect.disabled = true;
+    adPriceInput.disabled = true;
+    postAdSubmit.querySelector(".btn-label").textContent = "Submit Changes for Review";
+    showMsg("success", "Editing a live campaign — your changes go to admin for approval and won't replace what's currently showing until then.");
+  } else {
+    postAdSubmit.querySelector(".btn-label").textContent = "Resubmit Advertisement";
+    showMsg("success", ad.status === "expired"
+      ? "Reposting this campaign — review the details, then submit to pay and go through review again."
+      : "Editing your declined advertisement — make your changes and resubmit for review.");
+  }
 }
 
 /* ---------------------------------------------------------
@@ -818,21 +939,42 @@ postAdForm.addEventListener("submit", async (e) => {
   if (errorText) { showMsg("error", errorText); return; }
   if (!currentUser) return;
 
-  const price = Number(adPriceInput.value);
-
-  if (price > currentDepositBalance) {
-    postAdSubmit.classList.add("shake");
-    setTimeout(() => postAdSubmit.classList.remove("shake"), 400);
-    showMsg("error", `Your Deposit Balance (${formatNaira(currentDepositBalance)}) is lower than ${formatNaira(price)}. Please deposit more before posting.`);
-    return;
-  }
-
   postAdSubmit.classList.add("loading");
   postAdSubmit.disabled = true;
 
   try {
+    if (editContext?.isActiveEdit) {
+      // Live campaign — queue a creative-only change for admin to review.
+      // No wallet involvement: package/price never changes here.
+      const pendingEdit = {
+        title: adTitleInput.value.trim(),
+        link: adLinkInput.value.trim() || null,
+        requestedAt: serverTimestamp()
+      };
+      if (!isBannerMode) {
+        pendingEdit.description = adDescriptionInput.value.trim();
+        pendingEdit.imageUrl = uploadedMediaUrl;
+      } else {
+        pendingEdit.bannerMediaUrl = uploadedMediaUrl;
+        pendingEdit.bannerMediaType = uploadedMediaType;
+      }
+
+      await updateDoc(doc(db, "advertisements", editContext.adId), { pendingEdit });
+      showMsg("success", "Changes submitted — admin will review before they go live.");
+      setTimeout(() => { window.location.href = "track-posted-ads.html"; }, 1800);
+      return;
+    }
+
+    const price = Number(adPriceInput.value);
+    if (price > currentDepositBalance) {
+      postAdSubmit.classList.add("shake");
+      setTimeout(() => postAdSubmit.classList.remove("shake"), 400);
+      showMsg("error", `Your Deposit Balance (${formatNaira(currentDepositBalance)}) is lower than ${formatNaira(price)}. Please deposit more before posting.`);
+      return;
+    }
+
     const userRef = doc(db, "users", currentUser.uid);
-    const adRef = doc(collection(db, "advertisements"));
+    const adRef = editContext ? doc(db, "advertisements", editContext.adId) : doc(collection(db, "advertisements"));
 
     const adData = {
       advertiserUid: currentUser.uid,
@@ -870,7 +1012,7 @@ postAdForm.addEventListener("submit", async (e) => {
       transaction.set(txRef, {
         type: "ad_post",
         direction: "debit",
-        title: `Posted advertisement: ${adData.title}`,
+        title: `${editContext ? "Reposted" : "Posted"} advertisement: ${adData.title}`,
         amount: price,
         status: "successful",
         createdAt: serverTimestamp()
@@ -924,6 +1066,7 @@ onAuthStateChanged(auth, (user) => {
   }
 
   currentUser = user;
+  loadEditContextFromURL();
 
   if (unsubscribeUserDoc) unsubscribeUserDoc();
 
@@ -935,7 +1078,9 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide — show the
+    // username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
     if (removeAdsStatus) removeAdsStatus.style.display = data.popupRemovalActive ? "inline-flex" : "none";
 
@@ -980,13 +1125,19 @@ onAuthStateChanged(auth, (user) => {
      a user never sees their own posted ad in their own browsing
      view — same rule as Post Task's employerUid.
 
-   - Editing an already-approved ad should NOT overwrite the live
-     version immediately: per the spec, save the edit as a pending
-     revision (e.g. a "pendingEdit" object on the ad doc) that an
-     admin reviews. If approved, apply it to the live fields; if
-     declined, discard it and the ad keeps running as-is until it
-     expires. That logic belongs on the (not-yet-built) Track
-     Posted Ads page, not here — this page only creates new ads.
+   - Editing an already-approved (active) ad does NOT overwrite the
+     live version — it writes a `pendingEdit` object (title/link,
+     plus description+imageUrl or bannerMediaUrl+bannerMediaType)
+     that admin/advertisements.js's Edit Requests tab reviews. If
+     approved, those fields get merged onto the live ad; if
+     declined, pendingEdit is discarded and the ad keeps running
+     unchanged. This page locks the package/duration/price controls
+     during an active edit — only the creative can change once
+     money has already been paid for a specific package. Editing a
+     declined or expired ad is a full resubmission instead (package
+     included) with a fresh charge, since declined ads were already
+     refunded and an expired campaign's guarantee is fully used up
+     either way — see the top of the submit handler for the branch.
 
    - Deleting an ad is non-refundable regardless of remaining days
      or views — enforce that server-side too (an admin action or a
@@ -996,6 +1147,11 @@ onAuthStateChanged(auth, (user) => {
      ads get shown more often) is a display/rotation algorithm for
      wherever ads are rendered (home, task feed, Advertisements
      page) — not something this posting page needs to implement.
+     The math itself now lives in ad-priority.js (computeDeliveryStatus/
+     rankFeedAds/pickBannerTriplet) so every page that eventually
+     renders ads imports the same one engine, per the spec's "one
+     shared priority engine" rule — admin/advertisements.js's
+     Banners tab is the first consumer.
 
    - Banner packages (type: "banner") never write a description —
      it's forced to null — and store their creative under
@@ -1004,23 +1160,31 @@ onAuthStateChanged(auth, (user) => {
      untouched: they still use description + imageUrl exactly as
      before.
 
-   - BANNER_MEDIA_SPECS (maxWidth/maxHeight/minAspectRatio) is a
-     placeholder for the banner slot's real pixel footprint. Once
-     the actual Top/Bottom/Floating banner box is built out with a
-     real size, update just those three numbers — the checklist,
-     labels, and validation all read from that one object.
+   - BANNER_MEDIA_SPECS is now the spec's actual numbers — 3:1
+     exactly (±4% tolerance), max 3000×1000 — rather than the
+     earlier placeholder "at least 3x, 1200×300" guess. The banner
+     box itself scales any exact-3:1 creative down to fit its real
+     on-page height, so nothing above 3000×1000 is ever needed.
 
-   - Every purchase now also writes to platformLedger (category
-     "ad_revenue" or "banner_revenue") in the same transaction as
-     the wallet debit — the full `price` is logged since an ad/
-     banner slot has no worker payout to net out first, unlike a
-     task. This is the second real writer to the ledger (manual-
-     transactions.js's manual-deposit fee is the first); Finance's
-     Revenue tab picks both up automatically. Task Fees and
-     Withdrawal Fees are still gaps: task platformFee only becomes
-     real revenue once a submission is approved (that flow lives on
-     the not-yet-built task-approval page), and the withdrawal fee
-     is computed inside the requestWithdrawal Edge Function, not in
-     any client file — both need the same ledger write added where
-     they actually happen.
+   - Uploads (both regular ad images and banner image/video) now go
+     through Cloudinary's unsigned upload endpoint via a plain XHR,
+     not Firebase Storage — this was flagged as broken (the
+     progress bar never moved/filled) and Storage's own CORS/rules
+     setup was the suspected cause. CLOUDINARY_CLOUD_NAME and
+     CLOUDINARY_UPLOAD_PRESET above are placeholders; create an
+     *unsigned* upload preset in the Cloudinary dashboard and drop
+     both values in before this will actually upload anything. If
+     post-task.js's example-screenshot upload (still on Firebase
+     Storage as of its last pass) turns out to have the same
+     problem, migrate it the same way for consistency.
+
+   - Every purchase (new post, or a declined/expired repost) writes
+     to platformLedger (category "ad_revenue" or "banner_revenue")
+     in the same transaction as the wallet debit. An active-ad
+     creative edit never touches the ledger — nothing is being
+     bought or refunded there. Task Fees and Withdrawal Fees are
+     still gaps elsewhere: task platformFee only becomes real
+     revenue once a submission is approved, and the withdrawal fee
+     is computed inside the requestWithdrawal Edge Function — both
+     need the same ledger write added where they actually happen.
    =========================================================== */

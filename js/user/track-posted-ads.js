@@ -18,7 +18,6 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
@@ -310,11 +309,8 @@ const PAGE_SIZE = 10;
 let currentUser = null;
 let activeStatus = "active";
 
-let adDocsMap = new Map();
-let pageListeners = [];
-let lastVisibleDoc = null;
+let adDocsMap = new Map(); // ALL of this advertiser's ads, every status
 let hasMore = true;
-let isLoading = false;
 let openAdId = null;
 
 /* ---------------------------------------------------------
@@ -338,11 +334,13 @@ function showToast(text, icon = "bx-check-circle") {
    RENDER LIST
    --------------------------------------------------------- */
 function sortedAds() {
-  return Array.from(adDocsMap.values()).sort((a, b) => {
-    const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-    const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-    return bt - at;
-  });
+  return Array.from(adDocsMap.values())
+    .filter((a) => a.status === activeStatus)
+    .sort((a, b) => {
+      const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+      const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+      return bt - at;
+    });
 }
 
 const EMPTY_MESSAGES = {
@@ -484,6 +482,7 @@ function renderAdDetail(adId) {
   // Active
   container.innerHTML = `
     ${baseInfo}
+    ${ad.pendingEdit ? `<div class="status-info-note"><i class="bx bx-time-five"></i> Your edit is waiting on admin approval — this ad keeps showing its current version until then.</div>` : ""}
     <div class="action-row">
       <button type="button" class="action-btn" id="hideBtn-${adId}">
         <span class="action-spinner"></span>
@@ -495,7 +494,7 @@ function renderAdDetail(adId) {
         <i class="bx bx-trash"></i> Delete
       </button>
     </div>
-    <p class="refund-note">Editing sends this ad back for admin review. Advertisements are non-refundable once approved — deleting an active or expired ad does not return your balance.</p>
+    <p class="refund-note">Editing a live ad doesn't take it down — your changes are queued for admin approval and the current version keeps running until then. Advertisements are non-refundable once approved — deleting an active or expired ad does not return your balance.</p>
   `;
 
   wireHide(adId, ad.hidden);
@@ -567,12 +566,22 @@ function wireDelete(adId) {
 
         const refund = data.status === "pending_review" ? (data.price || 0) : 0;
 
+        // Firestore transactions require every read before any write —
+        // reading the wallet AFTER the ad update (as this used to) made
+        // every refunding delete throw and roll back silently, which is
+        // exactly the "delete and refund doesn't work" bug reported on
+        // the tasks side too. Non-refunding deletes (nothing to read)
+        // were never affected, which is why those looked fine.
+        const userRef = doc(db, "users", currentUser.uid);
+        let deposit = 0;
+        if (refund > 0) {
+          const userSnap = await transaction.get(userRef);
+          deposit = userSnap.data()?.wallet?.deposit ?? 0;
+        }
+
         transaction.update(adRef, { status: "deleted", hidden: true, deletedAt: serverTimestamp() });
 
         if (refund > 0) {
-          const userRef = doc(db, "users", currentUser.uid);
-          const userSnap = await transaction.get(userRef);
-          const deposit = userSnap.data()?.wallet?.deposit ?? 0;
           transaction.update(userRef, { "wallet.deposit": deposit + refund });
 
           const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
@@ -601,76 +610,57 @@ function wireDelete(adId) {
 }
 
 /* ---------------------------------------------------------
-   LIVE PAGINATED LIST (per status tab, advertiser's own ads only)
+   ONE LISTENER FOR THE WHOLE PAGE
+   Every tab (Pending/Active/Declined/Expired) is a client-side
+   filter over the SAME onSnapshot — a single
+   where("advertiserUid","==",...) query, no status filter —
+   instead of a separate query+index per tab. Switching tabs is
+   instant; "Load more" grows the one shared `limit` and
+   re-subscribes. Same pattern as track-posted-tasks.js — see
+   that file's notes for the full trade-off.
    --------------------------------------------------------- */
-function subscribeNextPage() {
-  if (!currentUser || !hasMore || isLoading) return;
-  isLoading = true;
+let pageSize = PAGE_SIZE;
+let adsUnsub = null;
+
+function subscribeAll() {
+  if (!currentUser) return;
+  if (adsUnsub) adsUnsub();
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
-  const constraints = [
+  const q = query(
+    collection(db, "advertisements"),
     where("advertiserUid", "==", currentUser.uid),
-    where("status", "==", activeStatus),
-    orderBy("createdAt", "desc")
-  ];
-  if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
-  constraints.push(limit(PAGE_SIZE));
+    orderBy("createdAt", "desc"),
+    limit(pageSize)
+  );
 
-  const q = query(collection(db, "advertisements"), ...constraints);
-  let firstFire = true;
+  adsUnsub = onSnapshot(q, (snap) => {
+    adDocsMap = new Map();
+    snap.docs.forEach((d) => adDocsMap.set(d.id, { id: d.id, ...d.data() }));
+    hasMore = snap.docs.length === pageSize;
 
-  const unsub = onSnapshot(q, (snap) => {
-    if (firstFire) {
-      firstFire = false;
-      isLoading = false;
-      loadMoreBtn.classList.remove("loading");
-      loadMoreBtn.disabled = false;
-
-      if (snap.empty) {
-        hasMore = false;
-      } else {
-        lastVisibleDoc = snap.docs[snap.docs.length - 1];
-        hasMore = snap.docs.length === PAGE_SIZE;
-      }
-    }
-
-    snap.docChanges().forEach((change) => {
-      if (change.type === "removed") {
-        adDocsMap.delete(change.doc.id);
-        if (openAdId === change.doc.id) openAdId = null;
-      } else {
-        adDocsMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() });
-      }
-    });
+    if (openAdId && !adDocsMap.has(openAdId)) openAdId = null;
 
     render();
-
     if (openAdId && document.getElementById(`detail-${openAdId}`)) {
       renderAdDetail(openAdId);
     }
+
+    loadMoreBtn.classList.remove("loading");
+    loadMoreBtn.disabled = false;
   }, (err) => {
     console.error("Track posted ads listener error:", err);
-    isLoading = false;
+    showToast("Couldn't load your ads.", "bx-error-circle");
     loadMoreBtn.classList.remove("loading");
     loadMoreBtn.disabled = false;
   });
-
-  pageListeners.push(unsub);
 }
 
-function resetFeed() {
-  pageListeners.forEach((unsub) => unsub());
-  pageListeners = [];
-  adDocsMap = new Map();
-  lastVisibleDoc = null;
-  hasMore = true;
-  openAdId = null;
-  adList.innerHTML = `<div class="ad-skeleton"></div><div class="ad-skeleton"></div><div class="ad-skeleton"></div>`;
-  subscribeNextPage();
-}
-
-loadMoreBtn.addEventListener("click", subscribeNextPage);
+loadMoreBtn.addEventListener("click", () => {
+  pageSize += PAGE_SIZE;
+  subscribeAll();
+});
 
 statusTabs.addEventListener("click", (e) => {
   const chip = e.target.closest(".filter-chip");
@@ -678,7 +668,8 @@ statusTabs.addEventListener("click", (e) => {
   statusTabs.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
   chip.classList.add("active");
   activeStatus = chip.dataset.status;
-  resetFeed();
+  openAdId = null;
+  render();
 });
 
 /* ---------------------------------------------------------
@@ -715,7 +706,9 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide — show the
+    // username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
   }, (err) => {
     console.error("User doc listener error:", err);
@@ -733,7 +726,7 @@ onAuthStateChanged(auth, (user) => {
     console.error("Alert dot listener error:", err);
   });
 
-  subscribeNextPage();
+  subscribeAll();
 });
 
 /* ===========================================================
@@ -743,31 +736,45 @@ onAuthStateChanged(auth, (user) => {
      transactions — no Cloud Function needed, since these are just
      the advertiser's own action on data they already own.
 
-   - "Edit", "Edit & Repost", and "Repost" all link to
-     post-advertisement.html?edit=ID (Repost adds &repost=1). That
-     page doesn't currently read those params or support editing an
-     existing ad — it's create-only today. Before these buttons do
-     anything beyond navigate, post-advertisement.html needs:
-       - Load the ad by ID and pre-fill the form.
-       - On save, if editing an ACTIVE ad: just update the fields
-         and set status back to "pending_review" — no new charge,
-         since the current campaign is already paid for.
-       - On save, if editing a DECLINED or EXPIRED ad (i.e. a
-         repost): re-check Deposit Balance and charge the price
-         again (same as a fresh post), then set
-         status = "pending_review". Declined ads were already
-         refunded when they were declined; expired ads fully
-         consumed their original payment running their course —
-         either way, reposting is economically a new purchase.
+   - DELETE + REFUND BUG (fixed this pass): the transaction wrote
+     to the ad doc and only then read the user's wallet inside the
+     refund branch. Firestore requires every read before any write
+     in a transaction, so any refunding delete (Pending) threw and
+     silently rolled back — non-refunding deletes (Declined/Active/
+     Expired, no wallet read at all) were never affected, which is
+     exactly why only Pending looked broken. Reads now come first.
+     track-posted-tasks.js had the identical bug, same fix.
+
+   - One employer-wide onSnapshot now feeds every tab (see
+     subscribeAll above) instead of a separate query per status —
+     same consolidation as track-posted-tasks.js, for the same
+     reason (fewer indexes, instant tab switching).
+
+   - "Edit" (Active) and "Edit & Repost"/"Repost" (Declined/
+     Expired) now work — post-advertisement.html reads ?edit=ID,
+     loads the ad, and pre-fills the form:
+       - Editing an ACTIVE ad locks the package/price entirely and
+         writes a `pendingEdit` object on the ad doc instead of
+         touching the live fields — no charge, and the ad keeps
+         showing its current version until admin approves or
+         declines the change (see admin/advertisements.js's Edit
+         Requests tab, which already existed and expects exactly
+         this shape). The banner near the top of this file's Active
+         branch, and the pendingEdit badge in its detail view,
+         reflect that.
+       - Editing a DECLINED or EXPIRED ad is a full resubmission —
+         package included — with a fresh charge, since declined ads
+         were already refunded and an expired campaign's guarantee
+         is fully spent either way.
 
    - Expiring an ad (flipping status: "active" → "expired" once
      expiresAt has passed) needs a scheduled Cloud Function — it
      must fire whether or not the advertiser ever reopens the app.
      Nothing in this page can substitute for that.
 
-   - declineHistory isn't written anywhere yet — that's the
-     not-yet-built Admin Advertisement Approval flow's job. Same
-     for the refund-on-decline described in the status note on the
-     Declined tab — that credit happens in that future admin
-     action, not in this file.
+   - Approve/decline (and the refund that comes with a decline) are
+     already built on admin/advertisements.js — that page existed
+     and was substantially complete before this pass touched it;
+     it wasn't something still to build. declineHistory is written
+     there, not here.
    =========================================================== */

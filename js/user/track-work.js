@@ -652,7 +652,9 @@ onAuthStateChanged(auth, (user) => {
     const initial = fullName.trim().charAt(0).toUpperCase() || "T";
 
     if (userNameEl) userNameEl.textContent = fullName || user.email;
-    if (userTypeEl) userTypeEl.textContent = data.accountType ? data.accountType + (data.institutionAbbr ? " · " + data.institutionAbbr : "") : user.email;
+    // accountType/institutionAbbr are retired site-wide — show the
+    // username instead.
+    if (userTypeEl) userTypeEl.textContent = data.username ? "@" + data.username : user.email;
     if (userAvatarEl) userAvatarEl.textContent = initial;
   }, (err) => {
     console.error("User doc listener error:", err);
@@ -702,13 +704,14 @@ onAuthStateChanged(auth, (user) => {
      Until that exists, every approval shown here will look
      manual (no "Auto" badge).
 
-   - The admin side of this loop isn't built yet: reviewing a
-     report and either (a) approving it — flip submission status
-     to "approved", credit the worker's Earned Balance, same as a
-     normal approval — or (b) declining it — set
-     reportStatus: "declined" and adminDeclineReason: "...", which
-     is what makes the Declined tab show a second reason and
-     permanently disables the flag (reported stays true, count
-     becomes 2). That belongs to the Admin Task/Report Management
-     page.
+   - The admin side of this loop is already built on reports-
+     support.js's Reports tab: it reads across every task's
+     submissions via a collectionGroup query (reported == true,
+     reportStatus == "pending" — the exact fields this page writes
+     above) and either Force Pays (flips status to "approved",
+     credits Earned Balance, same as a normal approval) or Declines
+     the report (reportStatus: "declined", adminDeclineReason: "..."
+     — which is what makes the Declined tab here show a second
+     reason and keeps the flag permanently disabled, since reported
+     stays true either way).
    =========================================================== */
