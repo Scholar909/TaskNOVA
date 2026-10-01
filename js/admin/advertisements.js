@@ -13,6 +13,7 @@ import {
   getFirestore,
   doc,
   getDoc,
+  setDoc,
   updateDoc,
   deleteField,
   collection,
@@ -20,8 +21,6 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
-  getDocs,
   onSnapshot,
   getCountFromServer,
   arrayUnion,
@@ -29,6 +28,15 @@ import {
   Timestamp,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
+import {
+  computeDeliveryStatus,
+  pickBannerTriplet,
+  BANNER_CYCLE_MS,
+  BANNER_PLACEMENTS,
+  MAX_ACTIVE_BANNERS,
+  MS_HOUR,
+  MS_DAY
+} from "./ad-priority.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDcQLQWNUqGdtd5Jo_eZaDVDq70xkL7S0k",
@@ -44,10 +52,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const PAGE_SIZE = 15;
-const MAX_ACTIVE_BANNERS = 3;
 const MAX_DECLINES = 5;
-const MS_HOUR = 1000 * 60 * 60;
-const MS_DAY = MS_HOUR * 24;
 
 const TYPE_LABELS = {
   starter: "Starter (3-day)",
@@ -191,17 +196,17 @@ function escapeHtml(str) {
 
 const userCache = new Map();
 async function getUserSummary(uid) {
-  if (!uid) return { fullName: "Unknown user", accountType: "" };
+  if (!uid) return { fullName: "Unknown user", username: "" };
   if (userCache.has(uid)) return userCache.get(uid);
   try {
     const snap = await getDoc(doc(db, "users", uid));
     const summary = snap.exists()
-      ? { fullName: snap.data().fullName || "TaskNOVA User", accountType: snap.data().accountType || "" }
-      : { fullName: "Deleted user", accountType: "" };
+      ? { fullName: snap.data().fullName || "TaskNOVA User", username: snap.data().username || "" }
+      : { fullName: "Deleted user", username: "" };
     userCache.set(uid, summary);
     return summary;
   } catch {
-    return { fullName: "Unknown user", accountType: "" };
+    return { fullName: "Unknown user", username: "" };
   }
 }
 
@@ -220,7 +225,7 @@ tabButtons.forEach((btn) => {
     if (!loadedTabs.has(tab)) {
       loadedTabs.add(tab);
       if (tab === "banners") startBannerMonitor();
-      else loadTab(tab, true);
+      else subscribeTab(tab, true);
     }
   });
 });
@@ -264,68 +269,78 @@ const TAB_CONFIG = {
 };
 
 const tabState = {};
-function freshState() { return { lastDoc: null, hasMore: true, isLoading: false, count: 0 }; }
+function freshState() { return { unsub: null, pageSize: PAGE_SIZE, hasMore: true, count: 0 }; }
 Object.keys(TAB_CONFIG).forEach((k) => { tabState[k] = freshState(); });
 
 /* ---------------------------------------------------------
-   LOAD A TAB PAGE
+   SUBSCRIBE A TAB — one onSnapshot per tab (live updates), whose
+   `limit` grows by PAGE_SIZE each time "Load more" is clicked.
+   Same pattern as admin/tasks.js's subscribeTab — see that file's
+   notes for the realtime/pagination trade-off this implies.
    --------------------------------------------------------- */
-async function loadTab(tabKey, reset = false) {
+async function subscribeTab(tabKey, reset = false) {
   const cfg = TAB_CONFIG[tabKey];
   const state = tabState[tabKey];
-  if (state.isLoading) return;
+
   if (reset) {
+    if (state.unsub) { state.unsub(); state.unsub = null; }
     Object.assign(state, freshState());
     document.getElementById(cfg.listEl).innerHTML = `<div class="tc-skeleton"></div><div class="tc-skeleton"></div>`;
     document.getElementById(cfg.emptyEl).style.display = "none";
   }
-  if (!state.hasMore) return;
 
-  state.isLoading = true;
   const loadMoreBtn = document.getElementById(cfg.loadMoreEl);
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
-  try {
-    const constraints = [...cfg.constraints];
-    if (cfg.order) constraints.push(orderBy(cfg.order[0], cfg.order[1]));
-    if (state.lastDoc) constraints.push(startAfter(state.lastDoc));
-    constraints.push(limit(PAGE_SIZE));
+  if (state.unsub) state.unsub();
 
-    const snap = await getDocs(query(collection(db, "advertisements"), ...constraints));
+  const constraints = [...cfg.constraints];
+  if (cfg.order) constraints.push(orderBy(cfg.order[0], cfg.order[1]));
+  constraints.push(limit(state.pageSize));
+
+  state.unsub = onSnapshot(query(collection(db, "advertisements"), ...constraints), async (snap) => {
     const listEl = document.getElementById(cfg.listEl);
-    if (reset) listEl.innerHTML = "";
+    const emptyEl = document.getElementById(cfg.emptyEl);
 
-    if (snap.empty && state.count === 0) {
-      document.getElementById(cfg.emptyEl).style.display = "flex";
+    if (snap.empty) {
+      listEl.innerHTML = "";
+      emptyEl.style.display = "flex";
       document.getElementById(cfg.metaEl).textContent = cfg.emptyText;
       state.hasMore = false;
+      state.count = 0;
       loadMoreBtn.style.display = "none";
+      loadMoreBtn.classList.remove("loading");
+      loadMoreBtn.disabled = false;
       return;
     }
 
+    emptyEl.style.display = "none";
+    listEl.innerHTML = "";
     for (const docSnap of snap.docs) {
-      const cardEl = await cfg.render(docSnap.id, docSnap.data(), tabKey);
-      listEl.appendChild(cardEl);
+      listEl.appendChild(await cfg.render(docSnap.id, docSnap.data(), tabKey));
     }
 
-    state.count += snap.docs.length;
-    state.lastDoc = snap.docs[snap.docs.length - 1] || state.lastDoc;
-    state.hasMore = snap.docs.length === PAGE_SIZE;
+    state.count = snap.docs.length;
+    state.hasMore = snap.docs.length === state.pageSize;
     loadMoreBtn.style.display = state.hasMore ? "inline-flex" : "none";
-    document.getElementById(cfg.metaEl).textContent = `${state.count} item${state.count === 1 ? "" : "s"} loaded`;
-  } catch (err) {
-    console.error(`Load ${tabKey} error:`, err);
-    showToast("Couldn't load that tab. Please try again.", "error");
-  } finally {
-    state.isLoading = false;
     loadMoreBtn.classList.remove("loading");
     loadMoreBtn.disabled = false;
-  }
+    document.getElementById(cfg.metaEl).textContent = `${state.count} item${state.count === 1 ? "" : "s"} loaded`;
+  }, (err) => {
+    console.error(`Subscribe ${tabKey} error:`, err);
+    showToast("Couldn't load that tab. Please try again.", "error");
+    loadMoreBtn.classList.remove("loading");
+    loadMoreBtn.disabled = false;
+  });
 }
 
 Object.keys(TAB_CONFIG).forEach((tabKey) => {
-  document.getElementById(TAB_CONFIG[tabKey].loadMoreEl)?.addEventListener("click", () => loadTab(tabKey, false));
+  document.getElementById(TAB_CONFIG[tabKey].loadMoreEl)?.addEventListener("click", () => {
+    const state = tabState[tabKey];
+    state.pageSize += PAGE_SIZE;
+    subscribeTab(tabKey, false);
+  });
 });
 
 /* ===========================================================
@@ -380,7 +395,7 @@ async function renderAdCard(adId, ad, tabKey) {
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(ad.title || "Untitled advertisement")}</div>
-        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.accountType ? " · " + escapeHtml(advertiser.accountType) : ""}</div>
+        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.username ? " · @" + escapeHtml(advertiser.username) : ""}</div>
       </div>
       <div class="tc-amount">${formatNaira(ad.price)}</div>
     </div>
@@ -465,7 +480,7 @@ async function renderEditCard(adId, ad) {
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(ad.title || "Untitled advertisement")}</div>
-        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.accountType ? " · " + escapeHtml(advertiser.accountType) : ""}</div>
+        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.username ? " · @" + escapeHtml(advertiser.username) : ""}</div>
       </div>
     </div>
     <div class="tc-tags">
@@ -693,68 +708,172 @@ function bumpCount(elId, delta) {
    views by expiresAt.
    =========================================================== */
 let bannerUnsub = null;
+let latestActiveBanners = []; // [{id, ...data}] — kept in sync by the monitor listener
+let defaultBannerCache = null; // siteSettings/defaultBanner doc, loaded once
+let previewCycleIndex = 0;
+let previewTimer = null;
+
+const FALLBACK_DEFAULT_BANNER = {
+  title: "Advertise your business on TaskNOVA",
+  link: "post-advertisement.html",
+  imageUrl: null
+};
+
+async function loadDefaultBanner() {
+  try {
+    const snap = await getDoc(doc(db, "siteSettings", "defaultBanner"));
+    defaultBannerCache = snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.error("Load default banner error:", err);
+    defaultBannerCache = null;
+  }
+  renderDefaultBannerCard();
+}
 
 function startBannerMonitor() {
   const listEl = document.getElementById("listBanners");
   const emptyEl = document.getElementById("emptyBanners");
   const metaEl = document.getElementById("metaBanners");
 
+  loadDefaultBanner();
+  startLivePreviewLoop();
+
   const q = query(collection(db, "advertisements"), where("type", "==", "banner"), where("status", "==", "active"));
   bannerUnsub = onSnapshot(q, async (snap) => {
     document.getElementById("countBanners").textContent = String(snap.size);
+    latestActiveBanners = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    renderLivePreview();
 
     if (snap.empty) {
       listEl.innerHTML = "";
       emptyEl.style.display = "flex";
-      metaEl.textContent = "No banner campaigns are active right now.";
-      return;
+      metaEl.textContent = "No banner campaigns are active right now — every slot is showing the default TaskNOVA banner.";
+    } else {
+      emptyEl.style.display = "none";
+      metaEl.textContent = `${snap.size} of ${MAX_ACTIVE_BANNERS} banner slots filled by paid campaigns`;
+      listEl.innerHTML = "";
+
+      // Sort worst-delivery-first so the campaign needing the most
+      // attention surfaces at the top of the monitor.
+      const rows = await Promise.all(snap.docs.map((d) => buildBannerRow(d.id, d.data())));
+      rows.sort((a, b) => a.rank - b.rank);
+      rows.forEach((r) => listEl.appendChild(r.el));
     }
 
-    emptyEl.style.display = "none";
-    metaEl.textContent = `${snap.size} of ${MAX_ACTIVE_BANNERS} banner slots in rotation`;
-    listEl.innerHTML = "";
-
-    // Sort worst-delivery-first so the campaign needing the most
-    // attention surfaces at the top of the monitor.
-    const rows = await Promise.all(snap.docs.map((d) => buildBannerRow(d.id, d.data())));
-    rows.sort((a, b) => a.rank - b.rank);
-    rows.forEach((r) => listEl.appendChild(r.el));
+    renderEmptySlotCards(snap.size);
   }, (err) => {
     console.error("Banner monitor error:", err);
     showToast("Couldn't load the banner monitor.", "error");
   });
 }
 
+/* ---------------------------------------------------------
+   LIVE 3-SLOT PREVIEW — exactly what a visitor sees right now on
+   Top/Bottom/Floating, using the same rotation math every future
+   ad-rendering page will use (ad-priority.js's pickBannerTriplet).
+   Recomputes every BANNER_CYCLE_MS so admin can literally watch
+   the rotation happen, same as a real visitor would.
+   --------------------------------------------------------- */
+function startLivePreviewLoop() {
+  if (previewTimer) clearInterval(previewTimer);
+  previewTimer = setInterval(() => {
+    previewCycleIndex++;
+    renderLivePreview();
+  }, BANNER_CYCLE_MS);
+}
+
+function renderLivePreview() {
+  const triplet = pickBannerTriplet(latestActiveBanners, previewCycleIndex);
+  BANNER_PLACEMENTS.forEach((slot) => {
+    const el = document.getElementById(`bannerPreview-${slot}`);
+    if (!el) return;
+    const ad = triplet[slot];
+    if (ad) {
+      const mediaUrl = ad.bannerMediaUrl;
+      const isVideo = ad.bannerMediaType === "video";
+      el.innerHTML = mediaUrl
+        ? (isVideo
+          ? `<video src="${mediaUrl}" autoplay muted loop playsinline></video>`
+          : `<img src="${mediaUrl}" alt="${escapeHtml(ad.title || "")}">`)
+        : `<div class="bp-fallback-text">${escapeHtml(ad.title || "Untitled banner")}</div>`;
+      el.classList.remove("default");
+      el.title = ad.title || "";
+    } else {
+      const fallback = defaultBannerCache || FALLBACK_DEFAULT_BANNER;
+      el.innerHTML = fallback.imageUrl
+        ? `<img src="${fallback.imageUrl}" alt="${escapeHtml(fallback.title || "")}">`
+        : `<div class="bp-fallback-text">${escapeHtml(fallback.title || "TaskNOVA")}</div>`;
+      el.classList.add("default");
+      el.title = fallback.title || "";
+    }
+  });
+}
+
+/* ---------------------------------------------------------
+   SETTINGS: default banner + empty-slot placeholders — "if there
+   is nothing then admin already knows that it's the default
+   banner that's there" (the live preview above already shows
+   this; these cards make it explicit + editable).
+   --------------------------------------------------------- */
+function renderDefaultBannerCard() {
+  const el = document.getElementById("defaultBannerCard");
+  if (!el) return;
+  const banner = defaultBannerCache || FALLBACK_DEFAULT_BANNER;
+  el.innerHTML = `
+    <div class="db-preview ${banner.imageUrl ? "" : "default"}">
+      ${banner.imageUrl ? `<img src="${banner.imageUrl}" alt="">` : `<div class="bp-fallback-text">${escapeHtml(banner.title)}</div>`}
+    </div>
+    <div class="db-info">
+      <strong>${escapeHtml(banner.title)}</strong>
+      <span>Shown in any banner slot with no paid campaign — ${defaultBannerCache ? "custom" : "built-in fallback, not yet customized"}.</span>
+    </div>
+    <button type="button" class="btn btn-ghost" id="editDefaultBannerBtn"><i class="bx bx-edit-alt"></i><span class="btn-label">Edit</span></button>
+  `;
+  document.getElementById("editDefaultBannerBtn").addEventListener("click", editDefaultBanner);
+}
+
+async function editDefaultBanner() {
+  const current = defaultBannerCache || FALLBACK_DEFAULT_BANNER;
+  const title = window.prompt("Default banner title:", current.title || "");
+  if (title === null) return;
+  const link = window.prompt("Default banner link:", current.link || "");
+  if (link === null) return;
+  const imageUrl = window.prompt("Default banner image URL (leave blank for a plain text banner):", current.imageUrl || "");
+  if (imageUrl === null) return;
+
+  try {
+    await setDoc(doc(db, "siteSettings", "defaultBanner"), {
+      title: title.trim() || FALLBACK_DEFAULT_BANNER.title,
+      link: link.trim() || null,
+      imageUrl: imageUrl.trim() || null,
+      updatedAt: serverTimestamp()
+    });
+    defaultBannerCache = { title: title.trim(), link: link.trim() || null, imageUrl: imageUrl.trim() || null };
+    renderDefaultBannerCard();
+    renderLivePreview();
+    showToast("Default banner updated.");
+  } catch (err) {
+    console.error("Save default banner error:", err);
+    showToast("Couldn't save the default banner. Please try again.", "error");
+  }
+}
+
+function renderEmptySlotCards(occupiedCount) {
+  const wrap = document.getElementById("emptySlotCards");
+  if (!wrap) return;
+  const emptyCount = Math.max(0, MAX_ACTIVE_BANNERS - occupiedCount);
+  wrap.innerHTML = Array.from({ length: emptyCount }).map(() => `
+    <div class="empty-slot-card">
+      <i class="bx bx-image-add"></i>
+      <span>Slot open — no paid campaign. Showing the default TaskNOVA banner above.</span>
+    </div>
+  `).join("");
+}
+
 async function buildBannerRow(adId, ad) {
   const advertiser = await getUserSummary(ad.advertiserUid);
-
-  const now = Date.now();
-  const approvedAtMs = ad.approvedAt?.toMillis ? ad.approvedAt.toMillis() : (ad.createdAt?.toMillis ? ad.createdAt.toMillis() : now);
-  const expiresAtMs = ad.expiresAt?.toMillis ? ad.expiresAt.toMillis() : now;
-  const guaranteedViews = ad.guaranteedViews || 0;
-  const currentViews = ad.currentViews || 0;
-  const remainingViews = Math.max(0, guaranteedViews - currentViews);
-  const elapsedMs = Math.max(0, now - approvedAtMs);
-  const remainingMs = Math.max(0, expiresAtMs - now);
-
-  const actualRatePerHour = elapsedMs > 0 ? currentViews / (elapsedMs / MS_HOUR) : 0;
-  const requiredRatePerHour = remainingMs > 0 ? remainingViews / (remainingMs / MS_HOUR) : (remainingViews > 0 ? Infinity : 0);
-
-  let level, label, rank;
-  if (remainingViews <= 0) {
-    level = "ahead"; label = "🟢 Guarantee met"; rank = 0;
-  } else if (requiredRatePerHour === Infinity) {
-    level = "critical"; label = "🔴 Critically behind"; rank = 4;
-  } else {
-    const ratio = requiredRatePerHour > 0 ? actualRatePerHour / requiredRatePerHour : 1;
-    if (ratio >= 1.15) { level = "ahead"; label = "🟢 Ahead of schedule"; rank = 1; }
-    else if (ratio >= 0.85) { level = "onschedule"; label = "🟡 On schedule"; rank = 2; }
-    else if (ratio >= 0.5) { level = "behind"; label = "🟠 Behind schedule"; rank = 3; }
-    else { level = "critical"; label = "🔴 Critically behind"; rank = 3.5; }
-  }
-
-  const pct = guaranteedViews ? Math.min(100, Math.round((currentViews / guaranteedViews) * 100)) : 0;
-  const daysLeft = Math.max(0, Math.ceil(remainingMs / MS_DAY));
+  const status = computeDeliveryStatus(ad, Date.now());
+  const { level, label, remainingViews, daysLeft, actualRatePerHour, requiredRatePerHour, pct } = status;
 
   const el = document.createElement("div");
   el.className = "task-card";
@@ -762,12 +881,12 @@ async function buildBannerRow(adId, ad) {
     <div class="tc-head">
       <div class="tc-title-wrap">
         <div class="tc-title">${escapeHtml(ad.title || "Untitled banner")}</div>
-        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.accountType ? " · " + escapeHtml(advertiser.accountType) : ""}</div>
+        <div class="tc-sub">${escapeHtml(advertiser.fullName)}${advertiser.username ? " · @" + escapeHtml(advertiser.username) : ""}</div>
       </div>
       <span class="priority-badge ${level}">${label}</span>
     </div>
     <div class="tc-progress-wrap">
-      <div class="tc-progress-label"><span>${currentViews.toLocaleString("en-NG")} / ${guaranteedViews.toLocaleString("en-NG")} guaranteed views</span><span>${pct}%</span></div>
+      <div class="tc-progress-label"><span>${(ad.currentViews || 0).toLocaleString("en-NG")} / ${(ad.guaranteedViews || 0).toLocaleString("en-NG")} guaranteed views</span><span>${pct}%</span></div>
       <div class="tc-progress-track views-track"><div class="tc-progress-fill views-fill" style="width:${pct}%"></div></div>
     </div>
     <div class="banner-stats-grid">
@@ -777,9 +896,78 @@ async function buildBannerRow(adId, ad) {
       <div class="banner-stat-box"><div class="bsb-label">Required pace</div><div class="bsb-value">${requiredRatePerHour === Infinity ? "—" : requiredRatePerHour.toFixed(1) + "/hr"}</div></div>
     </div>
     <div class="tc-date">Expires ${formatDate(ad.expiresAt)}</div>
+    <div class="tc-actions">
+      <button type="button" class="btn btn-ghost" data-act="edit"><i class="bx bx-edit-alt"></i><span class="btn-label">Edit</span></button>
+      <button type="button" class="btn btn-danger" data-act="pull-toggle"><i class="bx bx-trash"></i><span class="btn-label">Pull</span></button>
+    </div>
+    <div class="tc-decline-panel" id="pullPanel-${adId}"><div><div class="tc-decline-inner">
+      <p style="font-size:.82rem;color:var(--text-soft);">Pulls this banner out of rotation early. Advertisements are non-refundable once approved, same as the Active tab — ${escapeHtml(advertiser.fullName)} will not be credited back.</p>
+      <div class="tc-actions">
+        <button type="button" class="btn btn-ghost" data-act="pull-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" data-act="pull-confirm"><span class="btn-spinner"></span><i class="bx bx-trash"></i><span class="btn-label">Confirm Pull</span></button>
+      </div>
+    </div></div></div>
   `;
 
-  return { el, rank };
+  el.querySelector('[data-act="edit"]').addEventListener("click", () => openBannerEditor(adId, ad));
+  const pullPanel = el.querySelector(`#pullPanel-${adId}`);
+  el.querySelector('[data-act="pull-toggle"]').addEventListener("click", () => pullPanel.classList.add("show"));
+  el.querySelector('[data-act="pull-cancel"]').addEventListener("click", () => pullPanel.classList.remove("show"));
+  el.querySelector('[data-act="pull-confirm"]').addEventListener("click", (e) => pullBanner(adId, ad.title, el, e.currentTarget));
+
+  return { el, rank: level === "critical" ? 3.5 : level === "behind" ? 3 : level === "onschedule" ? 2 : status.remainingViews <= 0 ? 0 : 1 };
+}
+
+/* ---------------------------------------------------------
+   ACTION — PULL A LIVE BANNER (admin-initiated early removal)
+   Same non-refundable policy as every other approved-ad delete
+   on this site — see track-posted-ads.js's own delete rules.
+   --------------------------------------------------------- */
+async function pullBanner(adId, title, cardEl, btnEl) {
+  btnEl.classList.add("loading");
+  btnEl.disabled = true;
+  try {
+    await updateDoc(doc(db, "advertisements", adId), {
+      status: "deleted",
+      hidden: true,
+      deletedAt: serverTimestamp(),
+      deletedBy: "admin"
+    });
+    showToast(`"${title || "Banner"}" pulled from rotation.`);
+    animateOutAndRemove(cardEl);
+  } catch (err) {
+    console.error("Pull banner error:", err);
+    showToast("Couldn't pull this banner. Please try again.", "error");
+    btnEl.classList.remove("loading");
+    btnEl.disabled = false;
+  }
+}
+
+/* ---------------------------------------------------------
+   ADMIN BANNER EDIT — direct edit of a live campaign's creative.
+   Unlike the advertiser's own edit (which queues a pendingEdit for
+   approval, since they're not the approver), admin editing here
+   updates the live fields immediately — admin's own approval IS
+   the review. Keeps it to a simple prompt() each rather than a
+   full modal, since this is an occasional touch-up action, not a
+   primary workflow.
+   --------------------------------------------------------- */
+async function openBannerEditor(adId, ad) {
+  const newTitle = window.prompt("Banner title:", ad.title || "");
+  if (newTitle === null) return;
+  const newLink = window.prompt("Banner link (destination URL):", ad.link || "");
+  if (newLink === null) return;
+
+  try {
+    await updateDoc(doc(db, "advertisements", adId), {
+      title: newTitle.trim() || ad.title,
+      link: newLink.trim() || null
+    });
+    showToast("Banner updated.");
+  } catch (err) {
+    console.error("Edit banner error:", err);
+    showToast("Couldn't update this banner. Please try again.", "error");
+  }
 }
 
 /* ---------------------------------------------------------
@@ -833,10 +1021,13 @@ onAuthStateChanged(auth, async (user) => {
 
   loadCounts();
   loadedTabs.add("pending");
-  loadTab("pending", true);
+  subscribeTab("pending", true);
 });
 
-window.addEventListener("beforeunload", () => { if (bannerUnsub) bannerUnsub(); });
+window.addEventListener("beforeunload", () => {
+  if (bannerUnsub) bannerUnsub();
+  if (previewTimer) clearInterval(previewTimer);
+});
 
 /* ===========================================================
    NOTES
@@ -844,20 +1035,30 @@ window.addEventListener("beforeunload", () => { if (bannerUnsub) bannerUnsub(); 
    - Admin identity read (users/{uid}) mirrors the same assumption
      flagged on Tasks & Requests — swap it if admins live elsewhere.
 
+   - Pending/Active/Edit Requests/Declined are now realtime
+     (subscribeTab, onSnapshot with a growing `limit`) instead of
+     one-time getDocs reads — same conversion, same trade-off, as
+     admin/tasks.js's subscribeTab (see that file's notes). Banners
+     was already realtime before this pass.
+
+   - accountType/institutionAbbr are retired site-wide — card
+     subtitles show @username instead, matching every other admin
+     page.
+
    - Decline refunds the advertiser's `wallet.deposit` immediately
      in the same transaction as the status change — Tasks & Requests
      now does the same thing on task decline (both pages refund in
      full immediately, since nothing was ever spent on a submission
      that never went live). The real difference between the two
      pages is what happens after approval: an approved/active ad
-     that's later deleted (by the advertiser or admin) is NOT
-     refunded — the guaranteed-views commitment is treated as spent
-     once live — whereas an approved/active task that's deleted
-     still refunds the balance for any unfilled worker slots. Ads
-     have no equivalent "unfilled slots" concept once live, so there
-     was nothing partial to refund and the admin panel accordingly
-     has no delete action on the Active tab here — Hide/Unhide is
-     the only lever admin has over a live ad.
+     that's later deleted (by the advertiser, or now by admin via
+     the Banners tab's Pull action) is NOT refunded — the
+     guaranteed-views commitment is treated as spent once live —
+     whereas an approved/active task that's deleted still refunds
+     the balance for any unfilled worker slots. Ads have no
+     equivalent "unfilled slots" concept once live, so there's
+     nothing partial to refund; Hide/Unhide + (for banners) Pull are
+     the only levers admin has over a live ad.
 
    - Approving a banner-type ad is blocked once
      MAX_ACTIVE_BANNERS (3) are already active, per the spec's hard
@@ -865,42 +1066,58 @@ window.addEventListener("beforeunload", () => { if (bannerUnsub) bannerUnsub(); 
      UI for a blocked banner beyond the toast — it just stays in
      Pending until an admin retries after a slot frees up.
 
-   - Edit Requests reads/writes a `pendingEdit` object on the ad
-     doc (title/description/link/imageUrl or
-     bannerMediaUrl+bannerMediaType/requestedAt), per the forward-
-     looking note already left in post-advertisement.js. That
-     object isn't written anywhere yet — the (not-yet-built) edit
-     mode on post-advertisement.html needs to actually construct it
-     when an advertiser edits a live ad, or this tab will stay
-     permanently empty. track-posted-ads.js's existing "Edit" link
-     (?edit=adId) is the natural place for that submission to land.
+   - Edit Requests' `pendingEdit` object is now actually written —
+     post-advertisement.js's ?edit=adId mode constructs it when an
+     advertiser edits a currently-active ad (title/link, plus either
+     description+imageUrl or bannerMediaUrl+bannerMediaType). This
+     tab (already built before this pass) approves/declines it
+     exactly as before; nothing here needed to change for that.
 
-   - MAX_DECLINES (5) now mirrors Tasks & Requests exactly — same
-     coloring tiers on the decline-count badge (low/mid at 3+/max at
-     5). Like tasks, this is a display cap only: nothing here blocks
-     the Decline action itself once an ad hits 5, since in practice
-     an ad can't come back through Pending more than 5 times unless
-     the (not-yet-built) edit-and-repost flow keeps allowing it past
-     that count on the user side.
+   - The priority math (ahead/on-schedule/behind/critical, and the
+     ratio thresholds ≥1.15/≥0.85/≥0.5) now lives in ad-priority.js
+     (computeDeliveryStatus) instead of being duplicated inline in
+     buildBannerRow — per the spec's "one shared priority engine"
+     rule. The Banners tab's stat rows are unchanged visually; only
+     where the numbers come from moved.
 
-   - The Banners tab is entirely read-only: it does NOT assign Top/
-     Bottom/Floating placements or run the 15-second rotation itself
-     — that live rotation belongs on the public-facing pages
-     (home.js, advertisements.js, etc., none of which implement it
-     yet either). This tab only surfaces the same priority math
-     (ahead/on schedule/behind/critically behind) those pages will
-     need, so admins can see delivery health without waiting on that
-     build. The ahead/on-schedule/behind/critical thresholds
-     (ratio ≥1.15 / ≥0.85 / ≥0.5 / below) are a reasonable reading of
-     the spec's qualitative language ("approximately where it should
-     be") — no exact numbers were given, so tune these if you land
-     on different ones once the real rotation engine is built (it
-     should reuse this exact formula, per the spec's "one shared
-     priority engine" requirement).
+   - THIS PASS's main addition — the live preview + settings:
+       * The three preview boxes (#bannerPreview-top/bottom/
+         floating) show exactly what pickBannerTriplet() computes
+         right now, re-rendered every BANNER_CYCLE_MS (15s) by a
+         plain setInterval — the same cadence (and the same
+         function) any public page's real rotation should use once
+         built, so this preview will already match reality the
+         moment that's wired up elsewhere. It is *this admin page*
+         computing and displaying the triplet for admin's benefit —
+         it does not control what any visitor actually sees; each
+         page that renders banners still needs its own call to
+         pickBannerTriplet (or its own timer) to do that.
+       * Empty slots (fewer than 3 active banner campaigns) render
+         the configured default banner (siteSettings/defaultBanner)
+         in the preview, and a dashed "slot open" placeholder card
+         in the settings list below — this is the "if there is
+         nothing then admin already knows it's the default banner"
+         behaviour from the spec, made explicit rather than implicit.
+       * The default banner is editable via a trio of prompt()
+         dialogs (title/link/image URL) rather than a full modal —
+         deliberately minimal since this is an occasional config
+         action, not a primary workflow. Worth upgrading to a real
+         form with a Cloudinary upload (matching post-advertisement.js)
+         if this turns out to be touched often.
+       * Each occupied banner slot's Edit is the same lightweight
+         prompt()-based pattern, applied directly to the live ad
+         (no approval step needed — admin editing IS the approval).
+         Pull is a permanent, non-refundable early removal — see the
+         refund-policy note above.
 
    - View/impression counting itself (the visitor-exposure rules —
      no double-count on refresh, new page = new exposure, advertiser
-     never self-counts) lives entirely in the ad-rendering code on
-     public pages, not here — this page only reads whatever
-     `currentViews` those pages eventually write.
+     never self-counts) is now implemented too, as
+     ad-priority.js's claimImpressionSlot/isOwnAd — but only as
+     importable helpers. Nothing calls them yet, because no ad-
+     rendering page (home.js, earn.js, post-task.js's static banner
+     placeholders, etc.) was part of this pass. Whoever builds that
+     rendering should import claimImpressionSlot + isOwnAd +
+     pickBannerTriplet/rankFeedAds from ad-priority.js rather than
+     re-deriving any of this math a third time.
    =========================================================== */
