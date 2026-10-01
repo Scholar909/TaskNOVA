@@ -280,19 +280,49 @@
         </button>
       </section>
 
-      <!-- ================= BANNERS MONITOR ================= -->
+      <!-- ================= BANNERS ================= -->
       <section class="tnr-panel" id="panel-banners" data-panel="banners">
         <div class="banner-slots-note reveal">
           <i class="bx bx-info-circle"></i>
-          <span>Up to 3 banner campaigns can run at once. They share a live 15-second rotation across the Top, Bottom &amp; Floating placements on every page except Post Advertisement — this is a read-only delivery monitor, not a manual placement control.</span>
+          <span>Up to 3 banner campaigns can run at once, sharing a live 15-second rotation across Top, Bottom &amp; Floating on every page except Post Advertisement. The strip below shows exactly what's live right now.</span>
         </div>
-        <div class="panel-meta"><span id="metaBanners">Loading active banners…</span></div>
+
+        <div class="dash-card-head" style="margin-top:6px;">
+          <h2>Live right now</h2>
+          <p>Updates every 15 seconds — the same rotation a visitor sees.</p>
+        </div>
+        <div class="banner-preview-row">
+          <div class="banner-preview-box">
+            <div class="bp-slot-label">Top</div>
+            <div class="banner-preview" id="bannerPreview-top"></div>
+          </div>
+          <div class="banner-preview-box">
+            <div class="bp-slot-label">Bottom</div>
+            <div class="banner-preview" id="bannerPreview-bottom"></div>
+          </div>
+          <div class="banner-preview-box">
+            <div class="bp-slot-label">Floating</div>
+            <div class="banner-preview" id="bannerPreview-floating"></div>
+          </div>
+        </div>
+
+        <div class="dash-card-head" style="margin-top:22px;">
+          <h2>Default banner</h2>
+          <p>Shown automatically in any slot with no paid campaign — "if there is nothing" in a slot below, this is what's live there.</p>
+        </div>
+        <div class="default-banner-card" id="defaultBannerCard"></div>
+
+        <div class="dash-card-head" style="margin-top:22px;">
+          <h2>Banner slots</h2>
+          <p><span id="metaBanners">Loading active banners…</span></p>
+        </div>
         <div class="card-list" id="listBanners">
           <div class="tc-skeleton"></div>
         </div>
         <div class="panel-empty" id="emptyBanners" style="display:none;">
           <i class="bx bx-carousel"></i><span>No banner campaigns are active right now.</span>
         </div>
+        <div class="empty-slot-cards" id="emptySlotCards"></div>
       </section>
 
     </div>
