@@ -40,8 +40,8 @@ const db = getFirestore(app);
 // TODO: fill in this account's real values (Cloudinary dashboard ->
 // Settings -> Upload -> Upload presets; the preset must be "Unsigned").
 // Every upload below will fail with these placeholders in place.
-const CLOUDINARY_CLOUD_NAME = "your-cloud-name";
-const CLOUDINARY_UPLOAD_PRESET = "tasknova_unsigned";
+const CLOUDINARY_CLOUD_NAME = "tgohela8";
+const CLOUDINARY_UPLOAD_PRESET = "tasknova uploads";
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
