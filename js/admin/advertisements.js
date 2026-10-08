@@ -52,7 +52,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const PAGE_SIZE = 15;
-const MAX_DECLINES = 5;
+const MAX_DECLINES = 3;
 
 const TYPE_LABELS = {
   starter: "Starter (3-day)",
@@ -317,8 +317,14 @@ async function subscribeTab(tabKey, reset = false) {
 
     emptyEl.style.display = "none";
     listEl.innerHTML = "";
+    let rendered = 0;
     for (const docSnap of snap.docs) {
-      listEl.appendChild(await cfg.render(docSnap.id, docSnap.data(), tabKey));
+      const cardEl = await cfg.render(docSnap.id, docSnap.data(), tabKey);
+      if (cardEl) { listEl.appendChild(cardEl); rendered++; }
+    }
+    if (rendered === 0) {
+      emptyEl.style.display = "flex";
+      document.getElementById(cfg.metaEl).textContent = cfg.emptyText;
     }
 
     state.count = snap.docs.length;
@@ -347,6 +353,11 @@ Object.keys(TAB_CONFIG).forEach((tabKey) => {
    RENDER — PENDING / ACTIVE / DECLINED AD CARD
    =========================================================== */
 async function renderAdCard(adId, ad, tabKey) {
+  // A declined ad that's been resubmitted for review now lives on the
+  // Edit Requests tab (same doc, same status "declined" underneath —
+  // see post-advertisement.js's pendingEdit.isResubmission path) —
+  // skip it here so it isn't shown in both places at once.
+  if (tabKey === "declined" && ad.pendingEdit) return null;
   const card = document.createElement("div");
   card.className = "task-card" + (ad.hidden ? " hidden-task" : "");
   card.dataset.id = adId;
@@ -465,7 +476,14 @@ async function renderEditCard(adId, ad) {
 
   const advertiser = await getUserSummary(ad.advertiserUid);
   const edit = ad.pendingEdit || {};
-  const isBanner = ad.type === "banner";
+  const isResubmission = !!edit.isResubmission;
+  // A resubmission can change the package itself (duration/views/price,
+  // even feed<->banner), so its "type" comes from the proposed edit, not
+  // the stale declined doc; a plain creative-only edit never changes type.
+  const isBanner = (isResubmission ? edit.type : ad.type) === "banner";
+  const history = ad.declineHistory || [];
+  const atMax = history.length >= MAX_DECLINES;
+  const badgeClass = history.length === 0 ? "low" : atMax ? "max" : "mid";
 
   function field(label, oldVal) {
     return `<div class="diff-field"><strong>${label}</strong><p>${escapeHtml(oldVal || "—")}</p></div>`;
@@ -476,6 +494,13 @@ async function renderEditCard(adId, ad) {
     return `<div class="diff-field"><strong>${label}</strong><p class="${changed ? "changed" : ""}">${has ? escapeHtml(newVal) : "<em>unchanged</em>"}</p></div>`;
   }
 
+  const packageDiff = isResubmission ? `
+        ${newField("Package", `${(ad.guaranteedViews || 0).toLocaleString("en-NG")} views / ${ad.durationDays || 0}d`, `${(edit.guaranteedViews || 0).toLocaleString("en-NG")} views / ${edit.durationDays || 0}d`)}
+        ${newField("Price", formatNaira(ad.price), formatNaira(edit.price))}` : "";
+  const packageCurrent = isResubmission ? `
+        ${field("Package", `${(ad.guaranteedViews || 0).toLocaleString("en-NG")} views / ${ad.durationDays || 0}d`)}
+        ${field("Price", formatNaira(ad.price))}` : "";
+
   card.innerHTML = `
     <div class="tc-head">
       <div class="tc-title-wrap">
@@ -484,38 +509,65 @@ async function renderEditCard(adId, ad) {
       </div>
     </div>
     <div class="tc-tags">
-      <span class="tc-tag${isBanner ? " type-banner" : ""}"><i class="bx ${isBanner ? "bx-carousel" : "bx-megaphone"}"></i> ${escapeHtml(TYPE_LABELS[ad.type] || ad.type)}</span>
-      <span class="tc-tag urgent"><i class="bx bx-edit-alt"></i> Edit pending</span>
+      <span class="tc-tag${isBanner ? " type-banner" : ""}"><i class="bx ${isBanner ? "bx-carousel" : "bx-megaphone"}"></i> ${escapeHtml(TYPE_LABELS[edit.type || ad.type] || ad.type)}</span>
+      ${isResubmission
+        ? `<span class="tc-tag urgent"><i class="bx bx-refresh"></i> Resubmission after decline</span><span class="decline-badge ${badgeClass}"><i class="bx bx-x-circle"></i> ${history.length}/${MAX_DECLINES} declines</span>`
+        : `<span class="tc-tag urgent"><i class="bx bx-edit-alt"></i> Edit pending</span>`}
     </div>
     <div class="diff-grid">
       <div class="diff-col">
-        <div class="diff-col-label"><i class="bx bx-history"></i> Currently live</div>
+        <div class="diff-col-label"><i class="bx bx-history"></i> ${isResubmission ? "Previously declined with" : "Currently live"}</div>
         ${field("Title", ad.title)}
         ${!isBanner ? field("Description", ad.description) : ""}
         ${field("Link", ad.link)}
+        ${packageCurrent}
         ${!isBanner
           ? (ad.imageUrl ? `<div class="diff-field"><strong>Image</strong><img class="tc-media-thumb" src="${escapeHtml(ad.imageUrl)}" alt=""></div>` : "")
           : (ad.bannerMediaUrl ? `<div class="diff-field"><strong>Media</strong>${ad.bannerMediaType === "video" ? `<video class="tc-media-video" src="${escapeHtml(ad.bannerMediaUrl)}" muted loop playsinline controls></video>` : `<img class="tc-media-thumb" src="${escapeHtml(ad.bannerMediaUrl)}" alt="">`}</div>` : "")}
       </div>
       <div class="diff-col new-col">
-        <div class="diff-col-label"><i class="bx bx-edit-alt"></i> Requested change</div>
+        <div class="diff-col-label"><i class="bx bx-edit-alt"></i> ${isResubmission ? "Resubmitted as" : "Requested change"}</div>
         ${newField("Title", ad.title, edit.title)}
         ${!isBanner ? newField("Description", ad.description, edit.description) : ""}
         ${newField("Link", ad.link, edit.link)}
+        ${packageDiff}
         ${!isBanner
           ? (edit.imageUrl ? `<div class="diff-field"><strong>Image</strong><img class="tc-media-thumb" src="${escapeHtml(edit.imageUrl)}" alt=""></div>` : "")
           : (edit.bannerMediaUrl ? `<div class="diff-field"><strong>Media</strong>${edit.bannerMediaType === "video" ? `<video class="tc-media-video" src="${escapeHtml(edit.bannerMediaUrl)}" muted loop playsinline controls></video>` : `<img class="tc-media-thumb" src="${escapeHtml(edit.bannerMediaUrl)}" alt="">`}</div>` : "")}
       </div>
     </div>
+    ${isResubmission && history.length ? `
+      <div class="tc-detail-row"><strong>Earlier decline reasons</strong>
+        <ul class="decline-history-list">${history.map((r, i) => `<li><i class="bx bx-x-circle"></i><span>${i + 1}. ${escapeHtml(r)}</span></li>`).join("")}</ul>
+      </div>` : ""}
     <div class="tc-date">Requested ${formatDate(edit.requestedAt)}</div>
     <div class="tc-actions">
-      <button type="button" class="btn btn-success" data-act="approve-edit"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">Approve Changes</span></button>
-      <button type="button" class="btn btn-danger" data-act="decline-edit"><span class="btn-spinner"></span><i class="bx bx-x"></i><span class="btn-label">Decline Changes</span></button>
+      <button type="button" class="btn btn-success" data-act="approve-edit"><span class="btn-spinner"></span><i class="bx bx-check"></i><span class="btn-label">${isResubmission ? "Approve &amp; Go Live" : "Approve Changes"}</span></button>
+      <button type="button" class="btn btn-danger" data-act="decline-edit"><span class="btn-spinner"></span><i class="bx bx-x"></i><span class="btn-label">${isResubmission ? "Decline" : "Decline Changes"}</span></button>
     </div>
+    ${isResubmission ? `
+    <div class="tc-decline-panel" id="editDeclinePanel-${adId}"><div><div class="tc-decline-inner">
+      <textarea id="editDeclineReason-${adId}" placeholder="Reason for declining (shown to the advertiser, added to their decline history)…"></textarea>
+      <div class="tc-actions">
+        <button type="button" class="btn btn-ghost" data-act="edit-decline-cancel">Cancel</button>
+        <button type="button" class="btn btn-danger" data-act="edit-decline-confirm"><span class="btn-spinner"></span><i class="bx bx-x-circle"></i><span class="btn-label">Confirm Decline &amp; Refund</span></button>
+      </div>
+    </div></div></div>` : ""}
   `;
 
-  card.querySelector('[data-act="approve-edit"]').addEventListener("click", (e) => resolveEditRequest(adId, edit, true, card, e.currentTarget));
-  card.querySelector('[data-act="decline-edit"]').addEventListener("click", (e) => resolveEditRequest(adId, edit, false, card, e.currentTarget));
+  card.querySelector('[data-act="approve-edit"]').addEventListener("click", (e) => resolveEditRequest(adId, ad, edit, true, card, e.currentTarget));
+
+  if (isResubmission) {
+    const panel = card.querySelector(`#editDeclinePanel-${adId}`);
+    card.querySelector('[data-act="decline-edit"]').addEventListener("click", () => panel.classList.add("show"));
+    card.querySelector('[data-act="edit-decline-cancel"]').addEventListener("click", () => panel.classList.remove("show"));
+    card.querySelector('[data-act="edit-decline-confirm"]').addEventListener("click", (e) => {
+      const reason = document.getElementById(`editDeclineReason-${adId}`)?.value.trim() || "No reason given.";
+      resolveEditRequest(adId, ad, edit, false, card, e.currentTarget, reason);
+    });
+  } else {
+    card.querySelector('[data-act="decline-edit"]').addEventListener("click", (e) => resolveEditRequest(adId, ad, edit, false, card, e.currentTarget));
+  }
 
   return card;
 }
@@ -653,29 +705,105 @@ async function toggleHideAd(adId, currentlyHidden, cardEl, btnEl) {
 /* ---------------------------------------------------------
    ACTION — RESOLVE EDIT REQUEST (approve merges, decline discards)
    --------------------------------------------------------- */
-async function resolveEditRequest(adId, edit, approve, cardEl, btnEl) {
+async function resolveEditRequest(adId, ad, edit, approve, cardEl, btnEl, reason) {
   btnEl.classList.add("loading");
   btnEl.disabled = true;
   try {
-    if (approve) {
-      const patch = { pendingEdit: deleteField() };
-      if (edit.title !== undefined) patch.title = edit.title;
-      if (edit.description !== undefined) patch.description = edit.description;
-      if (edit.link !== undefined) patch.link = edit.link;
-      if (edit.imageUrl !== undefined) patch.imageUrl = edit.imageUrl;
-      if (edit.bannerMediaUrl !== undefined) patch.bannerMediaUrl = edit.bannerMediaUrl;
-      if (edit.bannerMediaType !== undefined) patch.bannerMediaType = edit.bannerMediaType;
-      await updateDoc(doc(db, "advertisements", adId), patch);
-      showToast("Changes approved and applied to the live advertisement.");
+    if (edit.isResubmission) {
+      // A declined ad's full resubmission — nothing is live yet, so
+      // Approve activates it fresh and Decline refunds the charge that
+      // was taken at submission time (same shape as the Pending tab's
+      // own Decline, plus the usual declineHistory bump).
+      if (approve) {
+        if (edit.type === "banner") {
+          const activeBannersSnap = await getCountFromServer(
+            query(collection(db, "advertisements"), where("type", "==", "banner"), where("status", "==", "active"))
+          );
+          if (activeBannersSnap.data().count >= MAX_ACTIVE_BANNERS) {
+            showToast(`Already ${MAX_ACTIVE_BANNERS} banner campaigns are live — wait for one to expire before approving another.`, "error");
+            return;
+          }
+        }
+
+        const approvedAtMs = Date.now();
+        const expiresAtMs = approvedAtMs + (edit.durationDays || 0) * MS_DAY;
+        await updateDoc(doc(db, "advertisements", adId), {
+          type: edit.type,
+          durationDays: edit.durationDays,
+          guaranteedViews: edit.guaranteedViews,
+          basePrice: edit.basePrice,
+          price: edit.price,
+          title: edit.title,
+          link: edit.link ?? null,
+          description: edit.description ?? null,
+          imageUrl: edit.imageUrl ?? null,
+          bannerMediaUrl: edit.bannerMediaUrl ?? null,
+          bannerMediaType: edit.bannerMediaType ?? null,
+          currentViews: 0,
+          clicks: 0,
+          status: "active",
+          hidden: false,
+          approvedAt: serverTimestamp(),
+          expiresAt: Timestamp.fromMillis(expiresAtMs),
+          pendingEdit: deleteField()
+        });
+        showToast("Resubmission approved — advertisement is now live.");
+        bumpCount("countActive", 1);
+        if (edit.type === "banner") bumpCount("countBanners", 1);
+      } else {
+        const adRef = doc(db, "advertisements", adId);
+        const userRef = doc(db, "users", ad.advertiserUid);
+
+        await runTransaction(db, async (transaction) => {
+          const userSnap = await transaction.get(userRef);
+          if (!userSnap.exists()) throw new Error("Advertiser account not found.");
+          const deposit = userSnap.data().wallet?.deposit ?? 0;
+
+          transaction.update(userRef, { "wallet.deposit": deposit + (edit.price || 0) });
+          transaction.update(adRef, {
+            pendingEdit: deleteField(),
+            status: "declined",
+            declineHistory: arrayUnion(reason || "No reason given."),
+            declinedAt: serverTimestamp()
+          });
+
+          const txRef = doc(collection(db, "users", ad.advertiserUid, "transactions"));
+          transaction.set(txRef, {
+            type: "refund",
+            direction: "credit",
+            title: `Refund — declined resubmission: ${edit.title || ad.title || "Untitled"}`,
+            amount: edit.price || 0,
+            status: "successful",
+            createdAt: serverTimestamp()
+          });
+        });
+        showToast("Resubmission declined — the advertiser was refunded.");
+        bumpCount("countDeclined", 1);
+      }
     } else {
-      await updateDoc(doc(db, "advertisements", adId), { pendingEdit: deleteField() });
-      showToast("Changes declined — the ad keeps running as-is.");
+      // Plain creative-only edit of a still-active ad — no money moved
+      // either way, so this is just a merge-or-discard of the diff.
+      if (approve) {
+        const patch = { pendingEdit: deleteField() };
+        if (edit.title !== undefined) patch.title = edit.title;
+        if (edit.description !== undefined) patch.description = edit.description;
+        if (edit.link !== undefined) patch.link = edit.link;
+        if (edit.imageUrl !== undefined) patch.imageUrl = edit.imageUrl;
+        if (edit.bannerMediaUrl !== undefined) patch.bannerMediaUrl = edit.bannerMediaUrl;
+        if (edit.bannerMediaType !== undefined) patch.bannerMediaType = edit.bannerMediaType;
+        await updateDoc(doc(db, "advertisements", adId), patch);
+        showToast("Changes approved and applied to the live advertisement.");
+      } else {
+        await updateDoc(doc(db, "advertisements", adId), { pendingEdit: deleteField() });
+        showToast("Changes declined — the ad keeps running as-is.");
+      }
     }
+
     animateOutAndRemove(cardEl);
     bumpCount("countEdits", -1);
   } catch (err) {
     console.error("Resolve edit request error:", err);
-    showToast("Couldn't update this request. Please try again.", "error");
+    showToast(err.message || "Couldn't update this request. Please try again.", "error");
   } finally {
     btnEl.classList.remove("loading");
     btnEl.disabled = false;
@@ -1066,12 +1194,39 @@ window.addEventListener("beforeunload", () => {
      UI for a blocked banner beyond the toast — it just stays in
      Pending until an admin retries after a slot frees up.
 
-   - Edit Requests' `pendingEdit` object is now actually written —
-     post-advertisement.js's ?edit=adId mode constructs it when an
-     advertiser edits a currently-active ad (title/link, plus either
-     description+imageUrl or bannerMediaUrl+bannerMediaType). This
-     tab (already built before this pass) approves/declines it
-     exactly as before; nothing here needed to change for that.
+   - Edit Requests now carries two different kinds of card, both
+     keyed off the same `pendingEdit` object so the tab still needs
+     only one query:
+       * A still-active ad's creative-only edit (title/link, plus
+         either description+imageUrl or bannerMediaUrl+
+         bannerMediaType) — unchanged from before this pass. Approve
+         merges those fields onto the live ad; Decline just discards
+         the proposal, no money or decline history involved, since
+         nothing was ever taken down.
+       * A declined ad's full resubmission — NEW this pass, and the
+         reason this tab exists at all per the latest instructions
+         ("edit it... goes to edit requests, not pending"). edit.
+         isResubmission: true marks these; they carry the *entire*
+         proposed ad (package/price included, not just creative),
+         because post-advertisement.js charges for it in full at
+         submit time (see that file's notes) — nothing was ever
+         refunded twice, and nothing goes live until Approve. Decline
+         here refunds that charge, pushes `reason` onto
+         declineHistory, and reverts status to "declined" — the same
+         consequences a Pending-tab Decline has, just reached via a
+         resubmission instead of a first-time review. MAX_DECLINES
+         (now 3, see below) and its badge apply here exactly as they
+         do on Pending/Declined.
+       * Because the underlying doc's status stays "declined" while
+         a resubmission is pending review (nothing flips it to
+         "pending_review" — that was explicitly ruled out), the
+         Declined tab's renderAdCard skips any ad that still has a
+         pendingEdit, so it shows up in exactly one tab at a time
+         instead of both.
+
+   - MAX_DECLINES dropped from 5 to 3 for ads specifically (tasks
+     stays at 5 — these are two independently-set thresholds that
+     happen to share a constant name pattern, not one shared value).
 
    - The priority math (ahead/on-schedule/behind/critical, and the
      ratio thresholds ≥1.15/≥0.85/≥0.5) now lives in ad-priority.js
