@@ -325,6 +325,12 @@ const nairaFormat = new Intl.NumberFormat("en-NG", {
   minimumFractionDigits: 0
 });
 
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
 function formatNaira(amount) {
   return nairaFormat.format(Number(amount) || 0);
 }
@@ -366,7 +372,7 @@ function ringSVG(filled, total, size, stroke) {
 const PAGE_SIZE = 10;
 
 let currentUser = null;
-let activeCategory = "all";
+let searchText = ""; // client-side filter over whatever's already loaded — no server-side category query anymore
 
 let taskDocsMap = new Map();   // taskId -> task data (live, across all loaded pages)
 let pageListeners = [];        // active onSnapshot unsubscribe functions
@@ -383,18 +389,11 @@ let justSubmittedTaskId = null; // suppress the "filled" toast for your own subm
 const taskList = document.getElementById("taskList");
 const loadMoreWrap = document.getElementById("loadMoreWrap");
 const loadMoreBtn = document.getElementById("loadMoreBtn");
-const categoryFilterScroll = document.getElementById("categoryFilterScroll");
+const earnSearchWrap = document.getElementById("earnSearchWrap");
+const earnSearchInput = document.getElementById("earnSearchInput");
+const earnSearchSuggest = document.getElementById("earnSearchSuggest");
 const slotToast = document.getElementById("slotToast");
 const slotToastText = document.getElementById("slotToastText");
-
-Object.entries(CATEGORY_META).forEach(([key, meta]) => {
-  const chip = document.createElement("button");
-  chip.type = "button";
-  chip.className = "filter-chip";
-  chip.dataset.category = key;
-  chip.innerHTML = `<i class="bx ${meta.icon}"></i> ${meta.label}`;
-  categoryFilterScroll.appendChild(chip);
-});
 
 function showToast(text) {
   slotToastText.textContent = text;
@@ -406,10 +405,50 @@ function showToast(text) {
    RENDER LIST
    --------------------------------------------------------- */
 function sortedTasks() {
-  return Array.from(taskDocsMap.values()).sort((a, b) => {
+  const needle = searchText.trim().toLowerCase();
+  const all = Array.from(taskDocsMap.values());
+  const filtered = needle
+    ? all.filter((t) => {
+        const label = (CATEGORY_META[t.category]?.label || t.category || "").toLowerCase();
+        return (t.title || "").toLowerCase().includes(needle) || label.includes(needle);
+      })
+    : all;
+
+  return filtered.sort((a, b) => {
     const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
     const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
     return bt - at;
+  });
+}
+
+// Only categories that at least one currently-loaded task actually has —
+// "shouldn't be there" if nothing is tagged with it right now — built
+// fresh each time the suggestion panel opens rather than cached, since
+// the feed grows (Load more) and updates (live) while the page is open.
+function availableCategorySuggestions() {
+  const present = new Set();
+  taskDocsMap.forEach((t) => { if (t.category) present.add(t.category); });
+  return Array.from(present)
+    .filter((key) => CATEGORY_META[key])
+    .sort((a, b) => CATEGORY_META[a].label.localeCompare(CATEGORY_META[b].label));
+}
+
+function renderSearchSuggestions() {
+  const keys = availableCategorySuggestions();
+  earnSearchSuggest.innerHTML = keys.length
+    ? keys.map((key) => {
+        const meta = CATEGORY_META[key];
+        return `<button type="button" class="filter-chip" data-fill="${escapeHtml(meta.label)}"><i class="bx ${meta.icon}"></i> ${escapeHtml(meta.label)}</button>`;
+      }).join("")
+    : `<span class="earn-search-suggest-empty">No task categories available right now.</span>`;
+
+  earnSearchSuggest.querySelectorAll("[data-fill]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      earnSearchInput.value = chip.dataset.fill;
+      searchText = chip.dataset.fill;
+      render();
+      earnSearchWrap.classList.remove("open");
+    });
   });
 }
 
@@ -417,7 +456,7 @@ function render() {
   const tasks = sortedTasks();
 
   if (!tasks.length) {
-    taskList.innerHTML = `<div class="task-empty"><i class="bx bx-search-alt"></i>No tasks match right now — try a different filter, or check back soon.</div>`;
+    taskList.innerHTML = `<div class="task-empty"><i class="bx bx-search-alt"></i>${searchText.trim() ? "No tasks match your search." : "No tasks available right now — check back soon."}</div>`;
     loadMoreWrap.style.display = "none";
     return;
   }
@@ -429,6 +468,8 @@ function render() {
   });
 
   loadMoreWrap.style.display = hasMore ? "flex" : "none";
+
+  if (earnSearchWrap.classList.contains("open")) renderSearchSuggestions();
 }
 
 // Updates just one task's ring/price/slots-left in place, without touching
@@ -805,7 +846,6 @@ function subscribeNextPage() {
     where("hidden", "==", false),
     where("full", "==", false)
   ];
-  if (activeCategory !== "all") constraints.push(where("category", "==", activeCategory));
 
   constraints.push(orderBy("createdAt", "desc"));
   if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
@@ -894,15 +934,25 @@ function resetFeed() {
 loadMoreBtn.addEventListener("click", subscribeNextPage);
 
 /* ---------------------------------------------------------
-   FILTERS
+   SEARCH
+   Pure client-side text filter over whatever's already loaded —
+   title or category label, case-insensitive. Empty input shows
+   everything. The suggestion panel is just a shortcut for filling
+   the input with a category name that's actually present right
+   now; it doesn't filter anything on its own.
    --------------------------------------------------------- */
-categoryFilterScroll.addEventListener("click", (e) => {
-  const chip = e.target.closest(".filter-chip");
-  if (!chip || chip.dataset.category === activeCategory) return;
-  categoryFilterScroll.querySelectorAll(".filter-chip").forEach((c) => c.classList.remove("active"));
-  chip.classList.add("active");
-  activeCategory = chip.dataset.category;
-  resetFeed();
+earnSearchInput.addEventListener("input", () => {
+  searchText = earnSearchInput.value;
+  render();
+});
+
+earnSearchInput.addEventListener("focus", () => {
+  renderSearchSuggestions();
+  earnSearchWrap.classList.add("open");
+});
+
+document.addEventListener("click", (e) => {
+  if (!earnSearchWrap.contains(e.target)) earnSearchWrap.classList.remove("open");
 });
 
 /* ---------------------------------------------------------
@@ -989,13 +1039,18 @@ onAuthStateChanged(auth, (user) => {
      transaction (transaction.get on the sub ref) so a race between
      two rapid clicks can't double-submit.
 
-   - Filtering by category/full/status/hidden together needs a
-     composite index — Firestore's console error the first time
-     each filter combination runs includes a direct link to create
-     it. Normal, one-time, not a bug. Location is no longer part of
-     that filter set (accountType/institutionAbbr, and the location
-     concept generally, are retired site-wide — the only filter
-     left is category).
+   - The Firestore query is now just status/hidden/full — category
+     is no longer a server-side filter at all. The old static
+     "every category, always listed" chip row is gone too; search
+     (title or category label, case-insensitive, purely client-side
+     over whatever's already loaded) replaced it, with the
+     suggestion panel's chips built fresh from whichever categories
+     are actually present in taskDocsMap each time it opens — a
+     category with zero current tasks simply never appears as a
+     suggestion, rather than showing and matching nothing. Clicking
+     a suggestion only fills the input; the input's own text is the
+     one and only filter. Location/accountType were already retired
+     site-wide before this and were never part of this query.
 
    - Submission docs now carry taskId/taskTitle/category/
      amountPerWorker/employerUid alongside the proof itself — that

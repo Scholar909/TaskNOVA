@@ -815,7 +815,7 @@ function clearMsg() {
    VALIDATION
    --------------------------------------------------------- */
 function validateForm() {
-  if (!editContext?.isActiveEdit && !selectedPackage) return "Pick a package first.";
+  if (!(editContext?.mode === "active") && !selectedPackage) return "Pick a package first.";
   if (!adTitleInput.value.trim()) return "Add a title for your ad.";
   if (isBannerMode) {
     if (!uploadedMediaUrl) return "Banner ads need an image or video that meets the specs above.";
@@ -823,7 +823,7 @@ function validateForm() {
     if (!adDescriptionInput.value.trim()) return "Add a short description.";
   }
   if (adLinkInput.value.trim() && !/^https?:\/\//i.test(adLinkInput.value.trim())) return "That link doesn't look right — it should start with http:// or https://";
-  if (!editContext?.isActiveEdit) {
+  if (editContext?.mode !== "active") {
     if (!adPriceInput.value || Number(adPriceInput.value) < selectedPackage.price) return "Price looks off — please recheck.";
   }
   if (isUploadingImage) return "Your media is still uploading — please wait a moment.";
@@ -854,7 +854,7 @@ function validateForm() {
      up, so a repost is a brand-new campaign in every way that
      matters) and sets status back to "pending_review".
    --------------------------------------------------------- */
-let editContext = null; // { adId, original, isActiveEdit }
+let editContext = null; // { adId, original, mode: "active" | "declinedResubmit" | "expiredResubmit" }
 
 async function loadEditContextFromURL() {
   const adId = new URLSearchParams(window.location.search).get("edit");
@@ -867,15 +867,16 @@ async function loadEditContextFromURL() {
       return;
     }
     const original = snap.data();
-    editContext = { adId, original, isActiveEdit: original.status === "active" };
-    prefillFormFromAd(original, editContext.isActiveEdit);
+    const mode = original.status === "active" ? "active" : original.status === "declined" ? "declinedResubmit" : "expiredResubmit";
+    editContext = { adId, original, mode };
+    prefillFormFromAd(original, mode);
   } catch (err) {
     console.error("Load ad for edit error:", err);
     showMsg("error", "Couldn't load that advertisement for editing. Please try again.");
   }
 }
 
-function prefillFormFromAd(ad, isActiveEdit) {
+function prefillFormFromAd(ad, mode) {
   const isBanner = ad.type === "banner";
 
   if (isBanner) {
@@ -905,7 +906,7 @@ function prefillFormFromAd(ad, isActiveEdit) {
     showLocalPreview(mediaType, mediaUrl);
   }
 
-  if (isActiveEdit) {
+  if (mode === "active") {
     // Creative-only edit of a live campaign — package/price is fixed.
     adDurationSelect.disabled = true;
     adPackSelect.disabled = true;
@@ -913,11 +914,14 @@ function prefillFormFromAd(ad, isActiveEdit) {
     adPriceInput.disabled = true;
     postAdSubmit.querySelector(".btn-label").textContent = "Submit Changes for Review";
     showMsg("success", "Editing a live campaign — your changes go to admin for approval and won't replace what's currently showing until then.");
+  } else if (mode === "declinedResubmit") {
+    // Full resubmission (package included) — goes to admin's Edit
+    // Requests tab, not back into the ordinary Pending queue.
+    postAdSubmit.querySelector(".btn-label").textContent = "Resubmit for Review";
+    showMsg("success", "Editing your declined advertisement — this goes to admin as a resubmission for review, same as before.");
   } else {
     postAdSubmit.querySelector(".btn-label").textContent = "Resubmit Advertisement";
-    showMsg("success", ad.status === "expired"
-      ? "Reposting this campaign — review the details, then submit to pay and go through review again."
-      : "Editing your declined advertisement — make your changes and resubmit for review.");
+    showMsg("success", "Reposting this campaign — review the details, then submit to pay and go through review again.");
   }
 }
 
@@ -943,7 +947,7 @@ postAdForm.addEventListener("submit", async (e) => {
   postAdSubmit.disabled = true;
 
   try {
-    if (editContext?.isActiveEdit) {
+    if (editContext?.mode === "active") {
       // Live campaign — queue a creative-only change for admin to review.
       // No wallet involvement: package/price never changes here.
       const pendingEdit = {
@@ -961,6 +965,79 @@ postAdForm.addEventListener("submit", async (e) => {
 
       await updateDoc(doc(db, "advertisements", editContext.adId), { pendingEdit });
       showMsg("success", "Changes submitted — admin will review before they go live.");
+      setTimeout(() => { window.location.href = "track-posted-ads.html"; }, 1800);
+      return;
+    }
+
+    if (editContext?.mode === "declinedResubmit") {
+      // Full resubmission of a declined ad — charged in full now (the
+      // original charge was already refunded at decline time), but
+      // written as a `pendingEdit` rather than applied directly: the
+      // doc's real fields and status ("declined") stay untouched until
+      // admin approves it from the Edit Requests tab. That's what keeps
+      // this out of the ordinary Pending queue per the current spec.
+      const price = Number(adPriceInput.value);
+      if (price > currentDepositBalance) {
+        postAdSubmit.classList.add("shake");
+        setTimeout(() => postAdSubmit.classList.remove("shake"), 400);
+        showMsg("error", `Your Deposit Balance (${formatNaira(currentDepositBalance)}) is lower than ${formatNaira(price)}. Please deposit more before resubmitting.`);
+        return;
+      }
+
+      const pendingEdit = {
+        isResubmission: true,
+        type: selectedPackage.type,
+        durationDays: selectedPackage.duration,
+        guaranteedViews: selectedPackage.views,
+        basePrice: selectedPackage.price,
+        price,
+        title: adTitleInput.value.trim(),
+        description: isBannerMode ? null : adDescriptionInput.value.trim(),
+        link: adLinkInput.value.trim() || null,
+        imageUrl: isBannerMode ? null : uploadedMediaUrl,
+        bannerMediaType: isBannerMode ? uploadedMediaType : null,
+        bannerMediaUrl: isBannerMode ? uploadedMediaUrl : null,
+        requestedAt: serverTimestamp()
+      };
+
+      const userRef = doc(db, "users", currentUser.uid);
+      const adRef = doc(db, "advertisements", editContext.adId);
+
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        if (!snap.exists()) throw new Error("Account not found.");
+
+        const buyer = snap.data();
+        const deposit = buyer.wallet?.deposit ?? 0;
+        if (price > deposit) throw new Error("Your Deposit Balance is too low to resubmit this ad.");
+
+        transaction.update(userRef, { "wallet.deposit": deposit - price });
+        transaction.update(adRef, { pendingEdit });
+
+        const txRef = doc(collection(db, "users", currentUser.uid, "transactions"));
+        transaction.set(txRef, {
+          type: "ad_post",
+          direction: "debit",
+          title: `Resubmitted advertisement: ${pendingEdit.title}`,
+          amount: price,
+          status: "successful",
+          createdAt: serverTimestamp()
+        });
+
+        // Same as any other purchase — full price is TaskNOVA revenue —
+        // this just happens to be a resubmission rather than brand new.
+        const ledgerRef = doc(collection(db, "platformLedger"));
+        transaction.set(ledgerRef, {
+          source: { uid: currentUser.uid, name: buyer.fullName || "TaskNOVA User", username: buyer.username || "" },
+          reason: isBannerMode ? "Banner advertisement (resubmission)" : "Advertisement post (resubmission)",
+          destination: { name: "TaskNOVA Revenue" },
+          amount: price,
+          category: isBannerMode ? "banner_revenue" : "ad_revenue",
+          createdAt: serverTimestamp()
+        });
+      });
+
+      showMsg("success", "Resubmitted — this goes to admin's Edit Requests for review.");
       setTimeout(() => { window.location.href = "track-posted-ads.html"; }, 1800);
       return;
     }
@@ -1125,19 +1202,36 @@ onAuthStateChanged(auth, (user) => {
      a user never sees their own posted ad in their own browsing
      view — same rule as Post Task's employerUid.
 
-   - Editing an already-approved (active) ad does NOT overwrite the
-     live version — it writes a `pendingEdit` object (title/link,
-     plus description+imageUrl or bannerMediaUrl+bannerMediaType)
-     that admin/advertisements.js's Edit Requests tab reviews. If
-     approved, those fields get merged onto the live ad; if
-     declined, pendingEdit is discarded and the ad keeps running
-     unchanged. This page locks the package/duration/price controls
-     during an active edit — only the creative can change once
-     money has already been paid for a specific package. Editing a
-     declined or expired ad is a full resubmission instead (package
-     included) with a fresh charge, since declined ads were already
-     refunded and an expired campaign's guarantee is fully used up
-     either way — see the top of the submit handler for the branch.
+   - Editing now branches three ways on the ad's status at the time
+     ?edit=adId is opened (editContext.mode):
+       - "active": does NOT overwrite the live version — writes a
+         `pendingEdit` object (title/link, plus description+imageUrl
+         or bannerMediaUrl+bannerMediaType) that admin/
+         advertisements.js's Edit Requests tab reviews and merges or
+         discards. No charge either way; package/duration/price are
+         locked in the form since money was already paid for that
+         specific package.
+       - "declinedResubmit" (status was "declined"): a full
+         resubmission — package included — charged in full right
+         away (declined ads were already refunded, so nothing is
+         double-charged or double-refunded). Unlike "active", this
+         does NOT merge into the live doc at submit time either —
+         it writes the *entire* proposed ad as `pendingEdit`
+         (isResubmission: true) and leaves the ad's real fields and
+         "declined" status untouched. That keeps it out of admin's
+         ordinary Pending queue and routes it to Edit Requests
+         instead, per the latest spec ("edit it... goes to edit
+         requests, not pending"). Admin approving there activates it
+         fresh (status: active, new expiresAt); declining refunds
+         this charge and pushes the reason onto declineHistory —
+         see admin/advertisements.js's resolveEditRequest.
+       - "expiredResubmit" (status was "expired"): unchanged from
+         before — updates the doc directly and sets
+         status: "pending_review" right away, landing in the
+         ordinary Pending queue like a brand-new post. Only decline-
+         driven edits were asked to move to Edit Requests; an
+         expired campaign was never declined, so it keeps the
+         simpler path.
 
    - Deleting an ad is non-refundable regardless of remaining days
      or views — enforce that server-side too (an admin action or a

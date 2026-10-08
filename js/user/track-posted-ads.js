@@ -447,6 +447,26 @@ function renderAdDetail(adId) {
 
   if (ad.status === "declined") {
     const history = ad.declineHistory || [];
+
+    if (ad.pendingEdit) {
+      // Already resubmitted and charged — sitting in admin's Edit
+      // Requests tab. No Edit/Delete while that's pending: editing again
+      // would double up the request, and deleting would orphan the
+      // charge already taken for this resubmission.
+      container.innerHTML = `
+        ${baseInfo}
+        <div class="td-section">
+          <h3>Decline history</h3>
+          ${history.length ? `
+            <ul class="decline-history-list">
+              ${history.map((reason, i) => `<li><i class="bx bx-x-circle"></i><span>${i + 1}. ${reason}</span></li>`).join("")}
+            </ul>` : `<p>No reason on record yet.</p>`}
+        </div>
+        <div class="status-info-note"><i class="bx bx-time-five"></i> Resubmitted — waiting on admin to review your changes.</div>
+      `;
+      return;
+    }
+
     container.innerHTML = `
       ${baseInfo}
       <div class="td-section">
@@ -762,10 +782,21 @@ onAuthStateChanged(auth, (user) => {
          this shape). The banner near the top of this file's Active
          branch, and the pendingEdit badge in its detail view,
          reflect that.
-       - Editing a DECLINED or EXPIRED ad is a full resubmission —
-         package included — with a fresh charge, since declined ads
-         were already refunded and an expired campaign's guarantee
-         is fully spent either way.
+       - Editing a DECLINED ad charges in full right away (it was
+         refunded at decline time, so nothing is double-charged) but
+         — as of a later pass — does NOT resubmit directly to
+         "pending_review" either. It writes the whole proposal as a
+         `pendingEdit` (isResubmission: true) and leaves the ad's
+         status as "declined" until admin acts from Edit Requests,
+         so it never mixes into the ordinary Pending queue. This
+         file's Declined-tab detail view reflects that: once
+         ad.pendingEdit is set, Edit/Delete are replaced with a
+         "waiting on admin" note (editing again would double up the
+         request, and deleting would orphan the charge already
+         taken). Editing an EXPIRED ad is unchanged — still a full,
+         direct resubmission straight to "pending_review" — since an
+         expired campaign was never declined and wasn't part of this
+         change.
 
    - Expiring an ad (flipping status: "active" → "expired" once
      expiresAt has passed) needs a scheduled Cloud Function — it
