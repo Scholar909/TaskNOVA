@@ -312,6 +312,58 @@ img { display: block; max-width: 100%; }
   color: #fff;
 }
 
+/* ---------- SEARCH (replaces the old static category filter row) ---------- */
+.earn-search-wrap { position: relative; margin-bottom: 12px; }
+
+.earn-search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-2);
+  min-height: 46px;
+}
+.earn-search-input-row i { color: var(--text-soft); font-size: 1.05rem; flex-shrink: 0; }
+.earn-search-input-row input {
+  flex: 1;
+  border: none;
+  background: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  font-size: .86rem;
+  min-width: 0;
+}
+
+/* Expands below the input on focus/click — tiny category chips that
+   fill the search box rather than filtering on their own, so there's
+   only ever one filtering mechanism (the text itself). */
+.earn-search-suggest {
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 2px 2px;
+}
+.earn-search-wrap.open .earn-search-suggest { display: flex; }
+.earn-search-wrap.open .earn-search-input-row {
+  border-color: rgba(22,128,255,.35);
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.earn-search-suggest .filter-chip {
+  padding: 6px 12px;
+  font-size: .72rem;
+}
+.earn-search-suggest .filter-chip i { font-size: .85rem; }
+.earn-search-suggest-empty {
+  padding: 4px 6px;
+  font-size: .76rem;
+  color: var(--text-soft);
+}
+
 /* ---------- TASK LIST ---------- */
 .task-list-section { margin-bottom: 22px; }
 .task-list { display: grid; gap: 10px; margin-top: 6px; }
