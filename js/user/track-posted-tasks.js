@@ -712,7 +712,7 @@ function renderSubmissionCard(taskId, subId, sub) {
       <div class="sc-decline-reason" id="declineReason-${subId}">
         <textarea id="declineText-${subId}" placeholder="Reason for declining (shown to the worker)…"></textarea>
         <div class="sc-decline-buttons">
-          <button type="button" class="action-btn danger" id="confirmDeclineBtn-${subId}"><span class="action-spinner"></span><i class="bx bx-x-circle"></i> Confirm Decline</button>
+          <button type="button" class="action-btn danger" id="confirmDeclineBtn-${subId}"><span class="action-spinner"></span><i class="bx bx-x-circle"></i> Confirm</button>
           <button type="button" class="action-btn" id="cancelDeclineBtn-${subId}">Cancel</button>
         </div>
       </div>

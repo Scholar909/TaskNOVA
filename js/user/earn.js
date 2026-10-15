@@ -835,52 +835,72 @@ async function submitProof(taskId, screenshotCount, textProofRequired) {
   btn.classList.add("loading");
   btn.disabled = true;
 
+  
   try {
-    const taskRef = doc(db, "tasks", taskId);
-    const subRef = doc(db, "tasks", taskId, "submissions", currentUser.uid);
-
-    await runTransaction(db, async (transaction) => {
-      const taskSnap = await transaction.get(taskRef);
-      if (!taskSnap.exists()) throw new Error("This task no longer exists.");
-
-      const data = taskSnap.data();
-      const filled = data.slotsFilled ?? 0;
-      const total = data.workersRequired ?? 0;
-      if (filled >= total) throw new Error("This task just filled up — sorry!");
-
-      const subSnap = await transaction.get(subRef);
-      if (subSnap.exists()) throw new Error("You've already submitted this task.");
-
-      const newFilled = filled + 1;
-      transaction.update(taskRef, {
-        slotsFilled: newFilled,
-        full: newFilled >= total
-      });
-
-      transaction.set(subRef, {
-        workerUid: currentUser.uid,
-        taskId,
-        taskTitle: data.title || "",
-        category: data.category || "",
-        amountPerWorker: data.amountPerWorker || 0,
-        employerUid: data.employerUid || null,
-        screenshotUrls: urls.filter(Boolean),
-        textProof: textInput?.value.trim() || "",
-        status: "pending",
-        reported: false,
-        submittedAt: serverTimestamp()
-      });
+  const taskRef = doc(db, "tasks", taskId);
+  const subRef = doc(db, "tasks", taskId, "submissions", currentUser.uid);
+  const workerRef = doc(db, "users", currentUser.uid);
+  
+  await runTransaction(db, async (transaction) => {
+    const taskSnap = await transaction.get(taskRef);
+    const subSnap = await transaction.get(subRef);
+    const workerSnap = await transaction.get(workerRef);
+  
+    if (!taskSnap.exists()) {
+      throw new Error("This task no longer exists.");
+    }
+  
+    if (!workerSnap.exists()) {
+      throw new Error("Worker profile not found.");
+    }
+  
+    const data = taskSnap.data();
+    const filled = data.slotsFilled ?? 0;
+    const total = data.workersRequired ?? 0;
+  
+    if (filled >= total) {
+      throw new Error("This task just filled up — sorry!");
+    }
+  
+    if (subSnap.exists()) {
+      throw new Error("You've already submitted this task.");
+    }
+  
+    const workerUsername = workerSnap.data().username || "";
+  
+    const newFilled = filled + 1;
+  
+    transaction.update(taskRef, {
+      slotsFilled: newFilled,
+      full: newFilled >= total
     });
-
-    justSubmittedTaskId = taskId;
-    msg.className = "proof-submit-msg show";
-    document.getElementById(`proofArea-${taskId}`).innerHTML =
-      `<div class="already-submitted-note"><i class="bx bx-check-circle"></i><span>Proof submitted — pending review.</span></div>`;
+  
+    transaction.set(subRef, {
+      workerUid: currentUser.uid,
+      workerUsername,
+      taskId,
+      taskTitle: data.title || "",
+      category: data.category || "",
+      amountPerWorker: data.amountPerWorker || 0,
+      employerUid: data.employerUid || null,
+      screenshotUrls: urls.filter(Boolean),
+      textProof: textInput?.value.trim() || "",
+      status: "pending",
+      reported: false,
+      submittedAt: serverTimestamp()
+    });
+  });
+  
+  justSubmittedTaskId = taskId;
+  msg.className = "proof-submit-msg show";
+  
+  document.getElementById(`proofArea-${taskId}`).innerHTML =
+    `<div class="already-submitted-note"><i class="bx bx-check-circle"></i><span>Proof submitted — pending review.</span></div>`;
   } catch (err) {
-    console.error("Submit proof error:", err);
-    showErr(err.message || "Something went wrong. Please try again.");
-    btn.classList.remove("loading");
-    btn.disabled = false;
+  console.error("Submit proof error:", err);
+  showErr(err.message || "Something went wrong. Please try again.");
+  btn.classList.remove("loading");
+  btn.disabled = false;
   }
 }
 
