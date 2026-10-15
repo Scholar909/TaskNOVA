@@ -866,7 +866,14 @@ async function loadEditContextFromURL() {
       showMsg("error", "That advertisement couldn't be found, or doesn't belong to your account.");
       return;
     }
-    const original = snap.data();
+        const original = snap.data();
+
+    // Declined 3/3 — no more edits or reposts, same as the task page
+    if (original.status === "declined" && (original.declineHistory || []).length >= 3) {
+      showMsg("error", "This advertisement has reached the maximum of 3 declines and can no longer be edited or reposted.");
+      return;
+    }
+
     const mode = original.status === "active" ? "active" : original.status === "declined" ? "declinedResubmit" : "expiredResubmit";
     editContext = { adId, original, mode };
     prefillFormFromAd(original, mode);

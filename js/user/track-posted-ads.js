@@ -282,6 +282,8 @@ const STATUS_LABELS = {
   expired: "Expired"
 };
 
+const MAX_DECLINES = 3;
+
 /* ---------------------------------------------------------
    FORMAT HELPERS
    --------------------------------------------------------- */
@@ -467,6 +469,8 @@ function renderAdDetail(adId) {
       return;
     }
 
+        const atMax = history.length >= MAX_DECLINES;
+
     container.innerHTML = `
       ${baseInfo}
       <div class="td-section">
@@ -477,8 +481,13 @@ function renderAdDetail(adId) {
           </ul>` : `<p>No reason on record yet.</p>`}
       </div>
       <div class="status-info-note"><i class="bx bx-info-circle"></i> Your balance for this ad was refunded when it was declined.</div>
+      ${atMax
+        ? `<div class="max-declines-note"><i class="bx bx-block"></i> Maximum declines reached (${MAX_DECLINES}/${MAX_DECLINES}). This ad can no longer be edited or reposted.</div>`
+        : `<div class="action-row">
+             <a class="action-btn primary" href="post-advertisement.html?edit=${adId}"><i class="bx bx-edit-alt"></i> Edit &amp; Repost</a>
+           </div>`
+      }
       <div class="action-row">
-        <a class="action-btn primary" href="post-advertisement.html?edit=${adId}"><i class="bx bx-edit-alt"></i> Edit &amp; Repost</a>
         <button type="button" class="action-btn danger" id="deleteBtn-${adId}"><span class="action-spinner"></span><i class="bx bx-trash"></i> Delete</button>
       </div>
     `;
