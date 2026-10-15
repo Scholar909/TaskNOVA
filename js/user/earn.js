@@ -24,12 +24,6 @@ import {
   runTransaction,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore.js";
-import {
-  getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.17.1/firebase-storage.js";
 import { initAuthGuard } from "./auth-guard.js";
 
 const firebaseConfig = {
@@ -43,8 +37,14 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
 const db = getFirestore(app);
-const storage = getStorage(app);
+
+// Cloudinary Configuration (same as Post Task page)
+const CLOUDINARY_CLOUD_NAME = "tgohela8";
+const CLOUDINARY_UPLOAD_PRESET = "tasknova uploads";
+const CLOUDINARY_UPLOAD_URL =
+  `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
 
 /* ---------------------------------------------------------
    THEME (persists site-wide — same key used on every page)
@@ -694,49 +694,102 @@ function wireProofForm(taskId, screenshotCount, textProofRequired) {
   submitBtn?.addEventListener("click", () => submitProof(taskId, screenshotCount, textProofRequired));
 }
 
-function uploadScreenshot(taskId, index, file, slotEl) {
-  if (!file.type.startsWith("image/")) return;
-  if (file.size > 5 * 1024 * 1024) {
-    const msg = document.getElementById(`proofMsg-${taskId}`);
-    if (msg) { msg.className = "proof-submit-msg show error"; msg.innerHTML = `<i class="bx bx-error-circle"></i><span>Image should be under 5MB.</span>`; }
+
+async function uploadScreenshot(taskId, index, file, slotEl) {
+  const msg = document.getElementById(`proofMsg-${taskId}`);
+
+  function showUploadError(message) {
+    if (msg) {
+      msg.className = "proof-submit-msg show error";
+      msg.innerHTML = `
+        <i class="bx bx-error-circle"></i>
+        <span>${message}</span>
+      `;
+    }
+  }
+
+  if (!file.type.startsWith("image/")) {
+    showUploadError("Please select an image file.");
     return;
   }
 
+  if (file.size > 5 * 1024 * 1024) {
+    showUploadError("Image should be under 5MB.");
+    return;
+  }
+
+  const previewUrl = URL.createObjectURL(file);
+
   slotEl.innerHTML = `
-    <img src="${URL.createObjectURL(file)}" alt="">
-    <div class="ss-uploading">Uploading…</div>
+    <img src="${previewUrl}" alt="Screenshot preview">
+    <div class="ss-uploading">Uploading...</div>
   `;
 
-  const path = `task-submissions/${taskId}/${currentUser.uid}/${index}-${Date.now()}-${file.name}`;
-  const fileRef = storageRef(storage, path);
-  const uploadTask = uploadBytesResumable(fileRef, file);
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-  uploadTask.on("state_changed",
-    () => {},
-    (err) => {
-      console.error("Screenshot upload error:", err);
-      slotEl.innerHTML = `<div class="ss-empty"><i class="bx bx-error-circle"></i><span>Failed — tap to retry</span></div><input type="file" accept="image/*" hidden>`;
-      wireOneSlot(taskId, index, slotEl);
-    },
-    async () => {
-      const url = await getDownloadURL(uploadTask.snapshot.ref);
-      const arr = screenshotUrls.get(taskId) || [];
-      arr[index] = url;
+    const response = await fetch(CLOUDINARY_UPLOAD_URL, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.secure_url) {
+      throw new Error(
+        data.error?.message || "Cloudinary upload failed."
+      );
+    }
+
+    // Save the Cloudinary URL for proof submission.
+    const arr = screenshotUrls.get(taskId) || [];
+    arr[index] = data.secure_url;
+    screenshotUrls.set(taskId, arr);
+
+    slotEl.innerHTML = `
+      <img src="${data.secure_url}" alt="Uploaded proof screenshot">
+      <button type="button" class="ss-remove" aria-label="Remove">
+        <i class="bx bx-x"></i>
+      </button>
+    `;
+
+    slotEl.querySelector(".ss-remove").addEventListener("click", (e) => {
+      e.stopPropagation();
+
+      arr[index] = null;
       screenshotUrls.set(taskId, arr);
 
       slotEl.innerHTML = `
-        <img src="${url}" alt="">
-        <button type="button" class="ss-remove" aria-label="Remove"><i class="bx bx-x"></i></button>
+        <input type="file" accept="image/*" hidden>
+        <div class="ss-empty">
+          <i class="bx bx-image-add"></i>
+          <span>Screenshot ${index + 1}</span>
+        </div>
       `;
-      slotEl.querySelector(".ss-remove").addEventListener("click", (e) => {
-        e.stopPropagation();
-        arr[index] = null;
-        screenshotUrls.set(taskId, arr);
-        slotEl.innerHTML = `<input type="file" accept="image/*" hidden><div class="ss-empty"><i class="bx bx-image-add"></i><span>Screenshot ${index + 1}</span></div>`;
-        wireOneSlot(taskId, index, slotEl);
-      });
-    }
-  );
+
+      wireOneSlot(taskId, index, slotEl);
+    });
+
+  } catch (err) {
+    console.error("Cloudinary screenshot upload error:", err);
+
+    slotEl.innerHTML = `
+      <input type="file" accept="image/*" hidden>
+      <div class="ss-empty">
+        <i class="bx bx-error-circle"></i>
+        <span>Failed — tap to retry</span>
+      </div>
+    `;
+
+    wireOneSlot(taskId, index, slotEl);
+    showUploadError(
+      "Couldn't upload your screenshot. Please try again."
+    );
+  } finally {
+    URL.revokeObjectURL(previewUrl);
+  }
 }
 
 function wireOneSlot(taskId, index, slotEl) {
@@ -835,87 +888,160 @@ async function submitProof(taskId, screenshotCount, textProofRequired) {
    LIVE PAGINATED FEED (real-time — tasks disappear the instant
    they're full, reappear automatically if a decline frees a slot)
    --------------------------------------------------------- */
+
 function subscribeNextPage() {
   if (!currentUser || !hasMore || isLoading) return;
+
   isLoading = true;
   loadMoreBtn.classList.add("loading");
   loadMoreBtn.disabled = true;
 
+  // Only require active status in Firestore.
+  // Check hidden/full in JavaScript so older task documents
+  // without those fields are not accidentally excluded.
   const constraints = [
     where("status", "==", "active"),
-    where("hidden", "==", false),
-    where("full", "==", false)
+    orderBy("createdAt", "desc")
   ];
 
-  constraints.push(orderBy("createdAt", "desc"));
-  if (lastVisibleDoc) constraints.push(startAfter(lastVisibleDoc));
+  if (lastVisibleDoc) {
+    constraints.push(startAfter(lastVisibleDoc));
+  }
+
   constraints.push(limit(PAGE_SIZE));
 
   const q = query(collection(db, "tasks"), ...constraints);
   let firstFire = true;
 
-  const unsub = onSnapshot(q, (snap) => {
-    if (firstFire) {
-      firstFire = false;
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      if (firstFire) {
+        firstFire = false;
+        isLoading = false;
+
+        loadMoreBtn.classList.remove("loading");
+        loadMoreBtn.disabled = false;
+
+        // Remember the last document for pagination.
+        if (!snap.empty) {
+          lastVisibleDoc = snap.docs[snap.docs.length - 1];
+          hasMore = snap.docs.length === PAGE_SIZE;
+        } else {
+          hasMore = false;
+        }
+
+        // CRITICAL FIX:
+        // Load the initial Firestore results into the map
+        // BEFORE rendering the Earn page.
+        snap.docs.forEach((taskDoc) => {
+          const data = taskDoc.data();
+
+          // Never show a user's own posted tasks to them.
+          if (data.employerUid === currentUser.uid) {
+            taskDocsMap.delete(taskDoc.id);
+            return;
+          }
+
+          // Exclude hidden or full tasks.
+          // Missing hidden/full fields are treated as false.
+          if (data.hidden === true || data.full === true) {
+            taskDocsMap.delete(taskDoc.id);
+            return;
+          }
+
+          taskDocsMap.set(taskDoc.id, {
+            id: taskDoc.id,
+            ...data
+          });
+        });
+
+        render();
+        return;
+      }
+
+      let structuralChange = false;
+      const modifiedIds = [];
+
+      snap.docChanges().forEach((change) => {
+        const taskId = change.doc.id;
+        const data = change.doc.data();
+
+        // Never display tasks posted by the signed-in user.
+        if (data.employerUid === currentUser.uid) {
+          if (taskDocsMap.has(taskId)) {
+            taskDocsMap.delete(taskId);
+            structuralChange = true;
+          }
+          return;
+        }
+
+        // Remove tasks that have been deleted from this query,
+        // hidden by their owner, or filled completely.
+        if (
+          change.type === "removed" ||
+          data.status !== "active" ||
+          data.hidden === true ||
+          data.full === true
+        ) {
+          if (taskDocsMap.has(taskId)) {
+            taskDocsMap.delete(taskId);
+            structuralChange = true;
+
+            if (openTaskId === taskId) {
+              openTaskId = null;
+
+              if (justSubmittedTaskId === taskId) {
+                justSubmittedTaskId = null;
+              } else if (change.type === "removed") {
+                showToast("This task is no longer available.");
+              }
+            }
+          }
+          return;
+        }
+
+        // Add newly available tasks.
+        if (change.type === "added") {
+          taskDocsMap.set(taskId, {
+            id: taskId,
+            ...data
+          });
+
+          structuralChange = true;
+          return;
+        }
+
+        // Update existing tasks without wiping an open proof form.
+        taskDocsMap.set(taskId, {
+          id: taskId,
+          ...data
+        });
+
+        modifiedIds.push(taskId);
+      });
+
+      if (structuralChange) {
+        render();
+      } else {
+        modifiedIds.forEach(updateRowInPlace);
+      }
+    },
+    (err) => {
+      console.error("Earn feed listener error:", err);
+
       isLoading = false;
       loadMoreBtn.classList.remove("loading");
       loadMoreBtn.disabled = false;
 
-      if (snap.empty) {
-        hasMore = false;
-      } else {
-        lastVisibleDoc = snap.docs[snap.docs.length - 1];
-        hasMore = snap.docs.length === PAGE_SIZE;
-      }
-
-      render();
-      return;
+      taskList.innerHTML = `
+        <div class="task-empty">
+          <i class="bx bx-error-circle"></i>
+          Unable to load tasks. Please refresh and try again.
+        </div>
+      `;
     }
-
-    let structuralChange = false;
-    const modifiedIds = [];
-
-    snap.docChanges().forEach((change) => {
-      const data = change.doc.data();
-      if (data.employerUid === currentUser.uid) return; // never show your own tasks
-
-      if (change.type === "removed") {
-        if (taskDocsMap.has(change.doc.id)) {
-          taskDocsMap.delete(change.doc.id);
-          structuralChange = true;
-
-          if (openTaskId === change.doc.id) {
-            openTaskId = null;
-            if (justSubmittedTaskId === change.doc.id) {
-              justSubmittedTaskId = null; // your own submission filled it — no "sorry" toast needed
-            } else {
-              showToast("This task's slots just got filled.");
-            }
-          }
-        }
-      } else if (change.type === "added") {
-        taskDocsMap.set(change.doc.id, { id: change.doc.id, ...data });
-        structuralChange = true;
-      } else {
-        // "modified" — data-only change (e.g. someone else's submission
-        // updated slotsFilled). Update in place so an open proof form
-        // elsewhere on the page isn't wiped out by a full re-render.
-        taskDocsMap.set(change.doc.id, { id: change.doc.id, ...data });
-        modifiedIds.push(change.doc.id);
-      }
-    });
-
-    if (structuralChange) {
-      render();
-    } else {
-      modifiedIds.forEach(updateRowInPlace);
-    }
-  }, (err) => {
-    console.error("Earn feed listener error:", err);
-    isLoading = false;
-    loadMoreBtn.classList.remove("loading");
-    loadMoreBtn.disabled = false;
-  });
+  );
 
   pageListeners.push(unsub);
 }
